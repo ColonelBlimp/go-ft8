@@ -4,7 +4,7 @@
 **Module:** `github.com/ColonelBlimp/go-ft8`
 **Package:** `ft8x`
 **Go version:** 1.25
-**Total code:** ~5,100 lines across 18 Go files
+**Total code:** ~5,400 lines across 20 Go files
 
 ---
 
@@ -19,7 +19,7 @@
 | 3 | Port sync8 candidate detection | ✅ Done | `sync8.go`, `sync8_test.go` |
 | 4 | Port mixed-radix FFT | ✅ Done | `fft_mixedradix.go`, `fft_mixedradix_test.go`, `fft.go` updated |
 | 5 | Upgrade OSD to order-2 with zsave | ✅ Done | `ldpc.go`, `decode.go`, `ft8_test.go` |
-| 6 | Port AP decoding | ❌ Not started | New `ap.go` + `decode.go` changes |
+| 6 | Port AP decoding | ✅ Done | `ap.go`, `ap_test.go`, `decode.go` |
 | 7 | Add plausibility filters | ❌ Not started | New `validate.go` |
 | 8 | Port iterative signal subtraction | ❌ Not started | `decode.go` changes |
 | 9 | Comprehensive testing | ❌ Not started | Test updates |
@@ -44,6 +44,14 @@
    - Added `TestNextpat91`, `TestOSDRoundTrip`, and `TestPlatanh` unit tests.
    - The zsave chain (cumulative posterior LLR snapshots at BP iterations 1–3) was already structurally correct; now feeds into the upgraded OSD.
 
+6. **AP (a-priori) decoding** (`ap.go`, `ap_test.go`, `decode.go`) — Faithful port of WSJT-X `ft8b.f90` AP pass logic (lines 243–401, `ncontest=0` standard QSO mode). Key additions:
+   - **`ap.go`** (~200 lines) — AP type constants (`APTypeCQ` through `APTypeMyDxRR73`), pre-computed bipolar bit patterns for CQ, RRR, 73, RR73 matching the Fortran `data` statements, `ComputeAPSymbols(mycall, dxcall)` to build 58-element bipolar arrays from Pack28, `ApplyAP()` to inject known bits into LLR/apmask arrays, and `APPassTypes()` to determine which AP types to try based on available callsign info.
+   - **`DecodeParams`** gains `MyCall`, `DxCall`, and `NfQSO` fields for AP configuration.
+   - **`DecodeCandidate`** gains `APType int` field (0 = no AP).
+   - **`DecodeSingle`** now runs up to 4 additional AP passes after the 4 regular LLR passes when `APEnabled=true`. AP passes use bmeta (nsym=1) as the base LLR, inject known bits with magnitude `apmag = max(|llra|) * 1.01`, and respect the `APWidth` frequency guard for AP types ≥3.
+   - **`ap_test.go`** — Tests for `ComputeAPSymbols` (CQ bipolar verification, round-trip), `ApplyAP` (mask position counts, LLR magnitude checks for all 6 AP types), `APPassTypes` (selection logic), and a synthetic weak-signal test demonstrating AP type 1 recovering a CQ message that regular BP cannot decode.
+   - AP is opt-in: existing tests and `DefaultDecodeParams()` have `APEnabled=false`, so regression baselines are unaffected.
+
 ### Current test results
 
 ```
@@ -52,6 +60,7 @@ Capture 2 provided candidates:  9/15 correct, 0 false  (baseline: ≥9)
 Capture 1 sync8 own candidates: 5/13 correct, 0 false
 Capture 2 sync8 own candidates: 7/15 correct, 0 false
 All unit tests:                  PASS
+AP CQ weak-signal decode:        PASS (4 hard errors recovered with AP)
 OSD round-trip (ndeep=4):        PASS (5 bit errors recovered)
 nextpat91 pattern counts:        PASS (verified C(k,w) for multiple k,w)
 Mixed-radix FFT accuracy:       <1e-9 round-trip error
@@ -70,12 +79,6 @@ Full WAV decode (provided candidates): ~4 s
 ---
 
 ## What to do next
-
-### Step 6: Port AP decoding
-
-**Goal:** Add a-priori (AP) decoding passes that inject known bits (from CQ, mycall, dxcall) into the LLR stream to decode weaker signals.
-
-**Reference:** WSJT-X `ft8b.f90` AP pass logic, the assessment §2.2.
 
 ### Step 7: Add plausibility filters
 
@@ -113,3 +116,7 @@ Full WAV decode (provided candidates): ~4 s
 5. **platanh: math.Atanh vs Fortran piecewise** — The Fortran piecewise-linear `platanh` (from `platanh.f90`) was tested but caused a 1-decode regression in Capture 1 because the BP decoder's LLR scaling (`ScaleFac=2.83`) was tuned with `math.Atanh`. The piecewise version amplifies small values by ~20% (`x/0.83` vs `x`) which shifts BP convergence. Retained `math.Atanh` with ±19.07 clamping. May revisit when ScaleFac is re-tuned in a later step.
 
 6. **OSD ntheta pre-test bypass for order-1** — The Fortran `ntheta` pre-test rejects OSD candidates whose parity error count exceeds a threshold. For order-1 base patterns (91 candidates, cheap to evaluate), the pre-test is bypassed to avoid marginal-signal regressions. Higher-order patterns still use the pre-test for performance.
+
+7. **AP decoding: ncontest=0 only** — Only standard QSO mode is implemented. Contest modes (NA_VHF, EU_VHF, Field Day, RTTY, WW_DIGI, FOX, HOUND, ARRL_DIGI) would require additional bit patterns and AP logic. These can be added as a future enhancement.
+
+8. **AP frequency guard** — AP types ≥3 (which pin 61–77 bits) are restricted to candidates within `APWidth` Hz of `NfQSO` to prevent false decodes. When `NfQSO=0` (default), the frequency guard is disabled and AP types ≥3 are applied everywhere. Callers should set `NfQSO` when they have QSO context to prevent false positives.

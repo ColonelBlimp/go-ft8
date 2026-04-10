@@ -16,8 +16,16 @@ type DecodeParams struct {
 	APEnabled bool
 	// APCQOnly restricts AP decoding to CQ-only a-priori information.
 	APCQOnly bool
-	// APWidth is the frequency window (Hz) within which AP decoding is applied.
+	// APWidth is the frequency window (Hz) within which AP types ≥3 are applied.
 	APWidth float64
+	// MyCall is the operator's callsign (used for AP types 2–6). Empty = not set.
+	MyCall string
+	// DxCall is the DX station's callsign (used for AP types 3–6). Empty = not set.
+	DxCall string
+	// NfQSO is the nominal QSO frequency (Hz) for AP frequency guard.
+	// AP types ≥3 are only tried if |f1 − NfQSO| ≤ APWidth.
+	// Set to 0 to disable the frequency guard.
+	NfQSO float64
 }
 
 // DefaultDecodeParams returns sensible defaults matching WSJT-X ndepth=2.
@@ -42,6 +50,8 @@ type DecodeCandidate struct {
 	NHardErrors int
 	// Tones holds the 79 channel tone indices (0–7) for subtracting the signal.
 	Tones [NN]int
+	// APType indicates the a-priori decoding type used (0 = no AP).
+	APType int
 }
 
 // Decode is the top-level FT8 decoder.  It takes 15 seconds of audio sampled
@@ -193,9 +203,26 @@ func DecodeSingle(
 	apmag *= 1.01
 
 	// ── Step 10: multi-pass LDPC decoding ─────────────────────────────────
+	// Compute AP symbols if AP is enabled and callsigns are provided.
+	var apsym [58]int
+	var apTypes []int
+	hasMyCall := params.MyCall != ""
+	hasDxCall := params.DxCall != ""
+	if params.APEnabled {
+		if hasMyCall || hasDxCall {
+			var ok bool
+			apsym, ok = ComputeAPSymbols(params.MyCall, params.DxCall)
+			if !ok {
+				hasMyCall = false
+				hasDxCall = false
+			}
+		}
+		apTypes = APPassTypes(hasMyCall, hasDxCall, params.APCQOnly)
+	}
+
 	npasses := 4
 	if params.APEnabled {
-		npasses = 4 // AP passes would be added here
+		npasses = 4 + len(apTypes)
 	}
 
 	maxOSD2 := -1
@@ -210,24 +237,51 @@ func DecodeSingle(
 	for ipass := 0; ipass < npasses; ipass++ {
 		var llrz [LDPCn]float64
 		var apmask [LDPCn]int8
+		iaptype := 0
 
-		switch ipass {
-		case 0:
+		if ipass < 4 {
+			// Regular passes: 4 different LLR extraction methods.
+			switch ipass {
+			case 0:
+				for i, v := range bmeta {
+					llrz[i] = ScaleFac * v
+				}
+			case 1:
+				for i, v := range bmetb {
+					llrz[i] = ScaleFac * v
+				}
+			case 2:
+				for i, v := range bmetc {
+					llrz[i] = ScaleFac * v
+				}
+			case 3:
+				for i, v := range bmetd {
+					llrz[i] = ScaleFac * v
+				}
+			}
+		} else {
+			// AP passes: use bmeta (nsym=1) as base, then inject AP bits.
 			for i, v := range bmeta {
 				llrz[i] = ScaleFac * v
 			}
-		case 1:
-			for i, v := range bmetb {
-				llrz[i] = ScaleFac * v
+			iaptype = apTypes[ipass-4]
+
+			// Frequency guard: AP types ≥3 only within APWidth of NfQSO.
+			if iaptype >= 3 && params.NfQSO > 0 {
+				if math.Abs(f1-params.NfQSO) > params.APWidth {
+					continue
+				}
 			}
-		case 2:
-			for i, v := range bmetc {
-				llrz[i] = ScaleFac * v
+
+			// Validity checks for AP types requiring callsigns.
+			if iaptype >= 2 && !hasMyCall {
+				continue
 			}
-		case 3:
-			for i, v := range bmetd {
-				llrz[i] = ScaleFac * v
+			if iaptype >= 3 && !hasDxCall {
+				continue
 			}
+
+			ApplyAP(&llrz, &apmask, iaptype, apsym, apmag)
 		}
 
 		res, ok := Decode174_91(llrz, LDPCk, maxOSD2, ndeep, apmask)
@@ -298,6 +352,7 @@ func DecodeSingle(
 			SNR:         xsnr,
 			NHardErrors: res.NHardErrors,
 			Tones:       itone,
+			APType:      iaptype,
 		}, true
 	}
 
