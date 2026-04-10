@@ -121,7 +121,7 @@ func isPow2(n int) bool {
 }
 
 // FFT computes the forward discrete Fourier transform of x.
-// Works for any length: uses radix-2 for power-of-2 sizes, Bluestein otherwise.
+// Uses radix-2 for power-of-2, mixed-radix for 5-smooth, Bluestein otherwise.
 func FFT(x []complex128) []complex128 {
 	n := len(x)
 	if n <= 1 {
@@ -129,13 +129,16 @@ func FFT(x []complex128) []complex128 {
 		copy(out, x)
 		return out
 	}
+	out := make([]complex128, n)
+	copy(out, x)
 	if isPow2(n) {
-		out := make([]complex128, n)
-		copy(out, x)
 		fftRadix2(out, false)
-		return out
+	} else if is5Smooth(n) {
+		fftMixedRadix(out, false)
+	} else {
+		return bluestein(x, false)
 	}
-	return bluestein(x, false)
+	return out
 }
 
 // IFFT computes the inverse discrete Fourier transform of x.
@@ -146,13 +149,16 @@ func IFFT(x []complex128) []complex128 {
 		copy(out, x)
 		return out
 	}
+	out := make([]complex128, n)
+	copy(out, x)
 	if isPow2(n) {
-		out := make([]complex128, n)
-		copy(out, x)
 		fftRadix2(out, true)
-		return out
+	} else if is5Smooth(n) {
+		fftMixedRadix(out, true)
+	} else {
+		return bluestein(x, true)
 	}
-	return bluestein(x, true)
+	return out
 }
 
 // RealFFT computes the FFT of a real-valued signal of length n.
@@ -169,6 +175,8 @@ func RealFFT(x []float32, n int) []complex128 {
 	}
 	if isPow2(n) {
 		fftRadix2(cx, false)
+	} else if is5Smooth(n) {
+		fftMixedRadix(cx, false)
 	} else {
 		cx = bluestein(cx, false)
 	}
