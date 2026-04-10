@@ -1,2 +1,9 @@
+# Large local WAV captures (keep out of git)
 /testdata/181201_180245.wav
 /testdata/210703_133430.wav
+
+# Attached reference projects (if copied/mounted under this repo)
+/ft8_lib/
+/goft8/
+/jtdx/
+/wsjt-wsjtx/
