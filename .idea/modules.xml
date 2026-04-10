@@ -2,7 +2,11 @@
 <project version="4">
   <component name="ProjectModuleManager">
     <modules>
+      <module fileurl="file://$PROJECT_DIR$/../ft8_lib/.idea/ft8_lib.iml" filepath="$PROJECT_DIR$/../ft8_lib/.idea/ft8_lib.iml" />
       <module fileurl="file://$PROJECT_DIR$/.idea/go-ft8.iml" filepath="$PROJECT_DIR$/.idea/go-ft8.iml" />
+      <module fileurl="file://$PROJECT_DIR$/../goft8/.idea/goft8.iml" filepath="$PROJECT_DIR$/../goft8/.idea/goft8.iml" />
+      <module fileurl="file://$PROJECT_DIR$/../jtdx/.idea/jtdx.iml" filepath="$PROJECT_DIR$/../jtdx/.idea/jtdx.iml" />
+      <module fileurl="file://$PROJECT_DIR$/../wsjt-wsjtx/.idea/wsjt-wsjtx.iml" filepath="$PROJECT_DIR$/../wsjt-wsjtx/.idea/wsjt-wsjtx.iml" />
     </modules>
   </component>
 </project>
