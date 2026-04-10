@@ -512,3 +512,103 @@ func TestBluesteinFFT192k(t *testing.T) {
 		t.Logf("192k-point FFT: peak at bin %d (%.2f Hz) ✓", peakBin, float64(peakBin)*df)
 	}
 }
+
+// ────────────────────────────────────────────────────────────────────────────
+// Test: DecodeIterative (multi-pass with signal subtraction)
+// ────────────────────────────────────────────────────────────────────────────
+
+func TestFt8xWAVIterativeCapture1(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping WAV decode test (slow)")
+	}
+
+	wavPath := "testdata/ft8test_capture_20260410.wav"
+	if _, err := os.Stat(wavPath); os.IsNotExist(err) {
+		t.Skipf("test WAV not found: %s", wavPath)
+	}
+
+	samples, sr, err := loadWAV(wavPath)
+	if err != nil {
+		t.Fatalf("load WAV: %v", err)
+	}
+	if sr != 12000 {
+		t.Fatalf("expected 12000 Hz, got %d Hz", sr)
+	}
+	t.Logf("Loaded %d samples (%.2f s)", len(samples), float64(len(samples))/float64(sr))
+
+	params := DefaultDecodeParams()
+	results := DecodeIterative(samples, params, 200, 2600)
+
+	correct := 0
+	falseDecodes := 0
+	t.Logf("Decoded %d message(s):", len(results))
+	for _, r := range results {
+		match := ""
+		msg := strings.TrimSpace(r.Message)
+		if wsjtxCapture1[msg] {
+			correct++
+			match = " ✓"
+		} else {
+			falseDecodes++
+			match = " ✗ (not in WSJT-X)"
+		}
+		t.Logf("  %+6.1f dt  %7.1f Hz  %+5.1f dB  nhard=%d  ap=%d  %s%s",
+			r.DT, r.Freq, r.SNR, r.NHardErrors, r.APType, msg, match)
+	}
+
+	t.Logf("Summary: %d correct, %d false, out of %d WSJT-X reference",
+		correct, falseDecodes, len(wsjtxCapture1))
+
+	const minCorrect = 5
+	if correct < minCorrect {
+		t.Errorf("REGRESSION: capture1 iterative correct = %d, expected >= %d", correct, minCorrect)
+	}
+}
+
+func TestFt8xWAVIterativeCapture2(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping WAV decode test (slow)")
+	}
+
+	wavPath := "testdata/ft8test_capture2_20260410.wav"
+	if _, err := os.Stat(wavPath); os.IsNotExist(err) {
+		t.Skipf("test WAV not found: %s", wavPath)
+	}
+
+	samples, sr, err := loadWAV(wavPath)
+	if err != nil {
+		t.Fatalf("load WAV: %v", err)
+	}
+	if sr != 12000 {
+		t.Fatalf("expected 12000 Hz, got %d Hz", sr)
+	}
+	t.Logf("Loaded %d samples (%.2f s)", len(samples), float64(len(samples))/float64(sr))
+
+	params := DefaultDecodeParams()
+	results := DecodeIterative(samples, params, 200, 2600)
+
+	correct := 0
+	falseDecodes := 0
+	t.Logf("Decoded %d message(s):", len(results))
+	for _, r := range results {
+		match := ""
+		msg := strings.TrimSpace(r.Message)
+		if wsjtxCapture2[msg] {
+			correct++
+			match = " ✓"
+		} else {
+			falseDecodes++
+			match = " ✗ (not in WSJT-X)"
+		}
+		t.Logf("  %+6.1f dt  %7.1f Hz  %+5.1f dB  nhard=%d  ap=%d  %s%s",
+			r.DT, r.Freq, r.SNR, r.NHardErrors, r.APType, msg, match)
+	}
+
+	t.Logf("Summary: %d correct, %d false, out of %d WSJT-X reference",
+		correct, falseDecodes, len(wsjtxCapture2))
+
+	const minCorrect = 7
+	if correct < minCorrect {
+		t.Errorf("REGRESSION: capture2 iterative correct = %d, expected >= %d", correct, minCorrect)
+	}
+}

@@ -11,12 +11,10 @@ import (
 
 func main() {
 	var (
-		wavPath  = flag.String("wav", "", "Path to 16-bit PCM mono WAV file")
-		freqMin  = flag.Float64("fmin", 200.0, "Minimum candidate search frequency (Hz)")
-		freqMax  = flag.Float64("fmax", 3200.0, "Maximum candidate search frequency (Hz)")
-		dtMin    = flag.Float64("dtmin", -0.5, "Minimum candidate search DT (s)")
-		dtMax    = flag.Float64("dtmax", 2.5, "Maximum candidate search DT (s)")
-		maxCands = flag.Int("max", 60, "Maximum number of candidates to decode")
+		wavPath = flag.String("wav", "", "Path to 16-bit PCM mono WAV file")
+		freqMin = flag.Float64("fmin", 200.0, "Minimum candidate search frequency (Hz)")
+		freqMax = flag.Float64("fmax", 3200.0, "Maximum candidate search frequency (Hz)")
+		passes  = flag.Int("passes", 3, "Number of iterative subtraction passes")
 	)
 	flag.Parse()
 
@@ -35,13 +33,9 @@ func main() {
 		os.Exit(1)
 	}
 
-	cands := ft8x.FindCandidates(samples, *freqMin, *freqMax, *dtMin, *dtMax)
-	if *maxCands > 0 && len(cands) > *maxCands {
-		cands = cands[:*maxCands]
-	}
-
 	params := ft8x.DefaultDecodeParams()
-	results := ft8x.Decode(samples, cands, params)
+	params.MaxPasses = *passes
+	results := ft8x.DecodeIterative(samples, params, *freqMin, *freqMax)
 	for _, r := range results {
 		fmt.Println(ft8x.FormatDecodeResult(r, 0))
 	}

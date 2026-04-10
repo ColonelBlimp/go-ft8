@@ -50,6 +50,9 @@ const (
 	NSTEP = NSPS / 4 // 480
 	// NHSYM is the number of spectrogram time columns.
 	NHSYM = NMAX/NSTEP - 3 // 372
+
+	// NFRAME is the number of audio samples in one FT8 frame (79 symbols × 1920 samples/symbol).
+	NFRAME = NN * NSPS // 151680
 )
 
 // Icos7 is the Costas 7×7 sync array (flipped w.r.t. original FT8).

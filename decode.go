@@ -26,13 +26,16 @@ type DecodeParams struct {
 	// AP types ≥3 are only tried if |f1 − NfQSO| ≤ APWidth.
 	// Set to 0 to disable the frequency guard.
 	NfQSO float64
+	// MaxPasses is the number of subtraction passes for DecodeIterative (default 3).
+	MaxPasses int
 }
 
 // DefaultDecodeParams returns sensible defaults matching WSJT-X ndepth=2.
 func DefaultDecodeParams() DecodeParams {
 	return DecodeParams{
-		Depth:   2,
-		APWidth: 25.0,
+		Depth:     2,
+		APWidth:   25.0,
+		MaxPasses: 3,
 	}
 }
 
@@ -126,7 +129,7 @@ func DecodeSingle(
 	for i := range ctwkZero {
 		ctwkZero[i] = complex(1, 0)
 	}
-	for idt := i0 - 10; idt <= i0+10; idt++ {
+	for idt := i0 - 20; idt <= i0+20; idt++ {
 		sync := Sync8d(cd0, idt, ctwkZero, 0)
 		if sync > smax {
 			smax = sync
@@ -364,38 +367,124 @@ func DecodeSingle(
 	return DecodeCandidate{}, false
 }
 
-// SubtractFT8 removes a decoded signal from the audio buffer to aid
-// subsequent decodes (iterative subtraction).  Returns the modified audio.
+// SubtractFT8 removes a decoded signal from the audio buffer in-place to
+// aid subsequent decodes (iterative subtraction).
 //
-// This is a simplified port of subtractft8.f90 – it reconstructs the ideal
-// signal waveform and subtracts it from dd.
-func SubtractFT8(dd []float32, itone [NN]int, f1, xdt float64) []float32 {
-	out := make([]float32, len(dd))
-	copy(out, dd)
+// The algorithm generates a GFSK-shaped complex reference waveform, estimates
+// the signal's complex amplitude (magnitude + phase) per symbol via
+// conjugate-multiply averaging, then subtracts the properly scaled and
+// phased signal.
+//
+// Port of subroutine subtractft8 from wsjt-wsjtx/lib/ft8/subtractft8.f90,
+// using a per-symbol amplitude estimator instead of the Fortran's FFT-based
+// global low-pass filter (avoids two 180k-point FFTs per call).
+func SubtractFT8(dd []float32, itone [NN]int, f0, xdt float64) {
+	cref := GenFT8CWave(itone, f0)
+	nstart := int(xdt * Fs) // 0-based audio sample index
 
-	twopi := 2.0 * math.Pi
-	dt := 1.0 / Fs
-
-	// Reconstruct the ideal 8-FSK waveform for the 79 symbols.
 	for sym := 0; sym < NN; sym++ {
-		tone := itone[sym]
-		toneFreq := f1 + float64(tone)*Baud
+		i0 := sym * NSPS
+		i1 := i0 + NSPS
+		if i1 > NFRAME {
+			i1 = NFRAME
+		}
 
-		// Start sample of this symbol.
-		t0 := xdt + float64(sym)*float64(NSPS)*dt
-		istart := int(math.Round(t0 * Fs))
-
-		phase := 0.0
-		for j := 0; j < NSPS; j++ {
-			idx := istart + j
-			if idx < 0 || idx >= len(out) {
-				continue
+		// Estimate complex amplitude: camp = mean( dd[j] × conj(cref[i]) ).
+		var camp complex128
+		n := 0
+		for i := i0; i < i1; i++ {
+			j := nstart + i
+			if j >= 0 && j < len(dd) {
+				dv := float64(dd[j])
+				camp += complex(dv*real(cref[i]), -dv*imag(cref[i]))
+				n++
 			}
-			// Subtract the real part of a unit-amplitude complex tone.
-			out[idx] -= float32(math.Cos(twopi*toneFreq*float64(j)*dt + phase))
+		}
+		if n == 0 {
+			continue
+		}
+		camp /= complex(float64(n), 0)
+
+		// Subtract the estimated signal: dd[j] -= 2 × Re(camp × cref[i]).
+		for i := i0; i < i1; i++ {
+			j := nstart + i
+			if j >= 0 && j < len(dd) {
+				cr, ci := real(cref[i]), imag(cref[i])
+				dd[j] -= float32(2.0 * (real(camp)*cr - imag(camp)*ci))
+			}
 		}
 	}
-	return out
+}
+
+// DecodeIterative runs the full FT8 decode pipeline with iterative signal
+// subtraction, matching WSJT-X's multi-pass approach from ft8_decode.f90.
+//
+// On each pass: find candidates via Sync8, decode each one, and subtract
+// successfully decoded signals from the audio.  Subsequent passes operate
+// on the cleaned audio, revealing weaker signals that were previously masked.
+//
+// audio is 15 s at 12000 Hz.  freqMin/freqMax define the search band in Hz.
+func DecodeIterative(audio []float32, params DecodeParams, freqMin, freqMax float64) []DecodeCandidate {
+	// Working copy of audio (modified in-place by subtraction).
+	dd := make([]float32, max(len(audio), NMAX))
+	copy(dd, audio)
+
+	maxPasses := params.MaxPasses
+	if maxPasses <= 0 {
+		maxPasses = 3
+	}
+
+	var allResults []DecodeCandidate
+	seen := make(map[string]bool)
+
+	for pass := 0; pass < maxPasses; pass++ {
+		// ── Candidate detection on current (cleaned) audio ──────────
+		// Lower threshold on later passes since subtraction reduces the
+		// noise floor, matching WSJT-X behaviour.
+		syncmin := 1.3
+		if pass == 0 && params.Depth <= 2 {
+			syncmin = 1.5
+		}
+		candidates := Sync8FindCandidates(dd, int(freqMin), int(freqMax), syncmin, 0, 600)
+		if len(candidates) > 200 {
+			candidates = candidates[:200]
+		}
+
+		// ── Decode each candidate ──────────────────────────────────
+		// Use lighter OSD on the first pass for speed (like Fortran's
+		// ndeep=2 on ipass=1 when ndepth=3).
+		passParams := params
+		if pass == 0 && params.Depth == 3 {
+			passParams.Depth = 2
+		}
+		ds := NewDownsampler()
+		newDecodes := 0
+		for i, cand := range candidates {
+			newdat := (i == 0) // 192k FFT once per pass
+			result, ok := DecodeSingle(dd, ds, cand.Freq, cand.DT, newdat, passParams)
+			if !ok {
+				continue
+			}
+			if seen[result.Message] {
+				continue
+			}
+			seen[result.Message] = true
+			allResults = append(allResults, result)
+			newDecodes++
+
+			// Subtract decoded signal from audio (in-place).
+			// Within this pass the Downsampler cache is stale, but the
+			// next pass will recompute candidates on the cleaned audio.
+			SubtractFT8(dd, result.Tones, result.Freq, result.DT)
+		}
+
+		// No new decodes → further passes won't help.
+		if newDecodes == 0 {
+			break
+		}
+	}
+
+	return allResults
 }
 
 // FindCandidates searches for potential FT8 signals using the spectrogram-based
