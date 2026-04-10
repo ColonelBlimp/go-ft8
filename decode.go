@@ -45,8 +45,8 @@ type DecodeCandidate struct {
 }
 
 // Decode is the top-level FT8 decoder.  It takes 15 seconds of audio sampled
-// at 12000 Hz and a list of candidate {frequency, time-offset} pairs to try,
-// and returns all successfully decoded messages.
+// at 12000 Hz and a list of candidate {frequency, time-offset} pairs to try
+// and return all successfully decoded messages.
 //
 // This is the Go equivalent of calling ft8b once per candidate from the
 // WSJT-X decoder thread.
@@ -81,8 +81,9 @@ func Decode(audio []float32, candidates []CandidateFreq, params DecodeParams) []
 
 // CandidateFreq is a {frequency, DT} pair to try decoding.
 type CandidateFreq struct {
-	Freq float64 // Hz
-	DT   float64 // seconds
+	Freq      float64 // Hz
+	DT        float64 // seconds
+	SyncPower float64 // normalized sync metric (0 if not computed)
 }
 
 // DecodeSingle attempts to decode a single FT8 signal at the given frequency
@@ -334,58 +335,16 @@ func SubtractFT8(dd []float32, itone [NN]int, f1, xdt float64) []float32 {
 	return out
 }
 
-// FindCandidates searches the spectrogram for potential FT8 signals by
-// looking for sync-like patterns across all frequencies.
+// FindCandidates searches for potential FT8 signals using the spectrogram-based
+// sync8 algorithm (faithful port of WSJT-X sync8.f90).
 //
-// audio is 15 s at 12000 Hz.  freqMin/freqMax define the search band.
-// Returns a list of {Freq, DT} candidates sorted by sync power.
+// audio is 15 s at 12000 Hz. freqMin/freqMax define the search band in Hz.
+// dtMin/dtMax are accepted for API compatibility but ignored — sync8 uses its
+// own fixed ±2.5 s search range.
+//
+// Returns a list of {Freq, DT, SyncPower} candidates sorted by sync power.
 func FindCandidates(audio []float32, freqMin, freqMax, dtMin, dtMax float64) []CandidateFreq {
-	ds := NewDownsampler()
-	newdat := true
-
-	var candidates []CandidateFreq
-	type scored struct {
-		c     CandidateFreq
-		power float64
-	}
-	var scored_list []scored
-
-	// Scan frequencies in steps of ~Baud/2.
-	step := Baud / 2.0
-	for freq := freqMin; freq <= freqMax; freq += step {
-		cd0 := ds.Downsample(audio, &newdat, freq)
-		newdat = false
-
-		// Scan time offsets.
-		for dt := dtMin; dt <= dtMax; dt += Dt2 * 4 {
-			i0 := int(math.Round((dt + 0.5) * Fs2))
-			var ctwk [32]complex128
-			for i := range ctwk {
-				ctwk[i] = complex(1, 0)
-			}
-			sync := Sync8d(cd0, i0, ctwk, 0)
-			if sync > 0 {
-				scored_list = append(scored_list, scored{
-					c:     CandidateFreq{Freq: freq, DT: dt},
-					power: sync,
-				})
-			}
-		}
-	}
-
-	// Sort by descending sync power.
-	for i := 1; i < len(scored_list); i++ {
-		j := i
-		for j > 0 && scored_list[j-1].power < scored_list[j].power {
-			scored_list[j-1], scored_list[j] = scored_list[j], scored_list[j-1]
-			j--
-		}
-	}
-
-	for _, s := range scored_list {
-		candidates = append(candidates, s.c)
-	}
-	return candidates
+	return Sync8FindCandidates(audio, int(freqMin), int(freqMax), 1.3, 0, 600)
 }
 
 // FormatDecodeResult formats a DecodeCandidate for printing in the

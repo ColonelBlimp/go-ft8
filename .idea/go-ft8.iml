@@ -5,9 +5,6 @@
     <content url="file://$MODULE_DIR$" />
     <orderEntry type="inheritedJdk" />
     <orderEntry type="sourceFolder" forTests="false" />
-    <orderEntry type="module" module-name="ft8_lib" />
-    <orderEntry type="module" module-name="jtdx" />
-    <orderEntry type="module" module-name="wsjt-wsjtx" />
     <orderEntry type="module" module-name="goft8" />
   </component>
 </module>

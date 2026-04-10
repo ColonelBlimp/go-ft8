@@ -38,6 +38,18 @@ const (
 	Dt2 = 1.0 / Fs2
 	// Baud is the symbol rate.
 	Baud = Fs / NSPS // 6.25 Hz
+
+	// Sync8 spectrogram parameters from WSJT-X ft8_params.f90.
+	// Used by Sync8FindCandidates for spectrogram-based candidate detection.
+
+	// NFFT1 is the FFT length for symbol spectra (2 × NSPS).
+	NFFT1 = 2 * NSPS // 3840
+	// NH1 is the number of positive-frequency bins in the symbol FFT.
+	NH1 = NFFT1 / 2 // 1920
+	// NSTEP is the spectrogram time-step size in samples (NSPS/4).
+	NSTEP = NSPS / 4 // 480
+	// NHSYM is the number of spectrogram time columns.
+	NHSYM = NMAX/NSTEP - 3 // 372
 )
 
 // Icos7 is the Costas 7×7 sync array (flipped w.r.t. original FT8).
