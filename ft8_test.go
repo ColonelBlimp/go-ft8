@@ -2,6 +2,7 @@ package ft8x
 
 import (
 	"fmt"
+	"math"
 	"testing"
 )
 
@@ -150,4 +151,125 @@ func TestLDPCGenerator(t *testing.T) {
 		t.Error("generator matrix is all zeros")
 	}
 	t.Logf("Generator matrix: %d×%d, %d non-zero entries", LDPCm, LDPCk, nonzero)
+}
+
+// TestNextpat91 verifies that nextpat91 generates the correct number of
+// weight-w patterns among k positions: C(k, w).
+func TestNextpat91(t *testing.T) {
+	for _, tc := range []struct {
+		k, w, want int
+	}{
+		{5, 1, 5},
+		{5, 2, 10},
+		{6, 2, 15},
+		{6, 3, 20},
+		{10, 1, 10},
+		{10, 2, 45},
+	} {
+		mi := make([]int8, tc.k)
+		for i := tc.k - tc.w; i < tc.k; i++ {
+			mi[i] = 1
+		}
+		count := 1 // initial pattern
+		for {
+			iflag := nextpat91(mi, tc.k, tc.w)
+			if iflag < 0 {
+				break
+			}
+			count++
+		}
+		if count != tc.want {
+			t.Errorf("nextpat91(k=%d, w=%d): got %d patterns, want %d", tc.k, tc.w, count, tc.want)
+		}
+	}
+}
+
+// TestOSDRoundTrip encodes a known message, converts to soft LLRs with some
+// noise, and verifies that OSDDecode at ndeep=4 recovers the original.
+func TestOSDRoundTrip(t *testing.T) {
+	var msg77 [77]int8
+	msg77[0] = 1
+	msg77[5] = 1
+	msg77[10] = 1
+	msg77[20] = 1
+	msg77[30] = 1
+	msg77[40] = 1
+	msg77[50] = 1
+	msg77[60] = 1
+	msg77[70] = 1
+
+	cw := Encode174_91(msg77)
+	if !CheckCRC14Codeword(cw) {
+		t.Fatal("encoded codeword has bad CRC")
+	}
+
+	// Convert to LLRs: bit=1 → positive, bit=0 → negative.
+	// Apply moderate magnitude to simulate a decent SNR signal.
+	var llr [LDPCn]float64
+	for i := 0; i < LDPCn; i++ {
+		if cw[i] == 1 {
+			llr[i] = 2.5
+		} else {
+			llr[i] = -2.5
+		}
+	}
+
+	// Flip a few bits to create errors.
+	llr[3] = -llr[3]
+	llr[17] = -llr[17]
+	llr[42] = -llr[42]
+	llr[88] = -llr[88]
+	llr[130] = -llr[130]
+
+	var apmask [LDPCn]int8
+
+	// Try OSD with ndeep=4 (order-2 + pre-processing).
+	msg91, cwOut, nhard, ok := OSDDecode(llr, LDPCk, apmask, 4)
+	if !ok {
+		t.Fatal("OSDDecode(ndeep=4) failed to decode")
+	}
+	if nhard < 0 {
+		t.Fatalf("OSDDecode returned negative nhardmin: %d", nhard)
+	}
+
+	// Verify recovered codeword matches the original.
+	for i := 0; i < LDPCn; i++ {
+		if cwOut[i] != cw[i] {
+			t.Errorf("codeword bit %d: got %d want %d", i, cwOut[i], cw[i])
+		}
+	}
+	// Verify message matches.
+	for i := 0; i < 77; i++ {
+		if msg91[i] != msg77[i] {
+			t.Errorf("message bit %d: got %d want %d", i, msg91[i], msg77[i])
+		}
+	}
+	t.Logf("OSD ndeep=4: nhard=%d, decoded OK", nhard)
+}
+
+// TestPlatanh verifies the protected atanh clamp.
+func TestPlatanh(t *testing.T) {
+	tests := []struct {
+		x    float64
+		want float64
+	}{
+		{0.0, 0.0},
+		{0.5, math.Atanh(0.5)},
+		{-0.5, math.Atanh(-0.5)},
+		{0.9, math.Atanh(0.9)},
+		{1.0, 19.07},
+		{-1.0, -19.07},
+		{2.0, 19.07},
+		{-2.0, -19.07},
+	}
+	for _, tc := range tests {
+		got := platanh(tc.x)
+		diff := got - tc.want
+		if diff < 0 {
+			diff = -diff
+		}
+		if diff > 1e-10 {
+			t.Errorf("platanh(%v) = %v, want %v", tc.x, got, tc.want)
+		}
+	}
 }

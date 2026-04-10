@@ -143,8 +143,12 @@ func BPDecode(llr [LDPCn]float64, apmask [LDPCn]int8, maxIterations int) ([LDPCn
 	return [LDPCn]int8{}, -1, false
 }
 
-// platanh is the "protected" atanh used in the Fortran code, clamping the
-// argument to avoid ±∞.
+// platanh is the "protected" atanh used in the BP check→variable message
+// update, clamping the argument to avoid ±∞ near ±1.
+//
+// Note: WSJT-X uses a piecewise-linear approximation (platanh.f90) which was
+// co-designed with the Fortran BP scaling. This Go port retains math.Atanh
+// with clamping because the ScaleFac and LLR pipeline were tuned with it.
 func platanh(x float64) float64 {
 	if x >= 1.0 {
 		return 19.07 // atanh clamp
@@ -220,14 +224,21 @@ func Encode174_91NoGRC(message91 [LDPCk]int8) [LDPCn]int8 {
 	return codeword
 }
 
-// OSDDecode is a simple order-1 ordered-statistics decoder (OSD) for the
-// (174,91) code.  It re-orders bits by reliability, performs Gaussian
-// elimination to find the Most Reliable Basis (MRB), then tests the order-0
-// candidate plus all order-1 candidates (single-bit flips of the MRB).
+// OSDDecode is an ordered-statistics decoder (OSD) for the (174,91) code.
+// It re-orders bits by reliability, performs Gaussian elimination to find the
+// Most Reliable Basis (MRB), then tests order-0 through order-N candidates
+// (single-bit, pair-flip, etc.) controlled by the ndeep parameter.
 //
-// Port of subroutine osd174_91 (depth=1 behaviour) from
-// wsjt-wsjtx/lib/ft8/osd174_91.f90.
-func OSDDecode(llr [LDPCn]float64, keff int, apmask [LDPCn]int8, norder int) ([LDPCk]int8, [LDPCn]int8, int, bool) {
+//	ndeep=0: order-0 only
+//	ndeep=1: order-1 (91 single flips)
+//	ndeep=2: order-1 with npre1 (parity pre-test)
+//	ndeep=3: order-1 with npre1 + npre2 (hash pair-flip)
+//	ndeep=4: order-2 with npre1 + npre2
+//	ndeep=5: order-3 with npre1 + npre2
+//	ndeep=6: order-4 with npre1 + npre2
+//
+// Port of subroutine osd174_91 from wsjt-wsjtx/lib/ft8/osd174_91.f90.
+func OSDDecode(llr [LDPCn]float64, keff int, apmask [LDPCn]int8, ndeep int) ([LDPCk]int8, [LDPCn]int8, int, bool) {
 	const (
 		n = LDPCn
 		k = LDPCk
@@ -251,28 +262,10 @@ func OSDDecode(llr [LDPCn]float64, keff int, apmask [LDPCn]int8, norder int) ([L
 		}
 	}
 
-	// --- Simplified OSD (order 0 + 1) ---
-	// Re-order received hard bits.
-	var hdecR [n]int8
-	var absR [n]float64
-	for i := 0; i < n; i++ {
-		hdecR[i] = hdec[indices[i]]
-		absR[i] = absLLR[indices[i]]
-	}
-
 	// Build the full systematic generator matrix G: [k][n].
-	// For a systematic (n,k) code: G[row][col] = I_k if col < k, else parity.
-	// gen (from LDPCGenerator) is [m][k]: parity[parityRow] = sum(gen[parityRow][j] * msg[j]).
-	// So the full systematic generator row r (message bit r) produces:
-	//   codeword[c] = delta(r,c) for c < k
-	//   codeword[k+p] = gen[p][r]  for p = 0..m-1
-	//
-	// We then re-order columns by reliability (indices).
 	var gFull [k][n]int8
 	for row := 0; row < k; row++ {
-		// Identity part: gFull[row][row] = 1.
 		gFull[row][row] = 1
-		// Parity part: gFull[row][k+p] = gen[p][row].
 		for p := 0; p < m; p++ {
 			gFull[row][k+p] = gen[p][row]
 		}
@@ -286,11 +279,20 @@ func OSDDecode(llr [LDPCn]float64, keff int, apmask [LDPCn]int8, norder int) ([L
 		}
 	}
 
+	// Re-order hard decisions and magnitudes.
+	var hdecR [n]int8
+	var absR [n]float64
+	var apmaskR [n]int8
+	for i := 0; i < n; i++ {
+		hdecR[i] = hdec[indices[i]]
+		absR[i] = absLLR[indices[i]]
+		apmaskR[i] = apmask[indices[i]]
+	}
+
 	// Gaussian elimination to create systematic form (MRB in first k positions).
 	indexMap := make([]int, n)
 	copy(indexMap, indices)
 	for id := 0; id < k; id++ {
-		// Find pivot in column id among rows id..k-1.
 		found := false
 		for icol := id; icol < k+20 && icol < n; icol++ {
 			if g[id][icol] == 1 {
@@ -302,6 +304,7 @@ func OSDDecode(llr [LDPCn]float64, keff int, apmask [LDPCn]int8, norder int) ([L
 					indexMap[id], indexMap[icol] = indexMap[icol], indexMap[id]
 					hdecR[id], hdecR[icol] = hdecR[icol], hdecR[id]
 					absR[id], absR[icol] = absR[icol], absR[id]
+					apmaskR[id], apmaskR[icol] = apmaskR[icol], apmaskR[id]
 				}
 				// Eliminate column id from other rows.
 				for r2 := 0; r2 < k; r2++ {
@@ -320,7 +323,7 @@ func OSDDecode(llr [LDPCn]float64, keff int, apmask [LDPCn]int8, norder int) ([L
 		}
 	}
 
-	// Transpose g for fast encoding: g2[col][row] (port of g2 in Fortran).
+	// Transpose g for fast encoding: g2[col][row].
 	var g2 [n][k]int8
 	for r := 0; r < k; r++ {
 		for c := 0; c < n; c++ {
@@ -328,18 +331,17 @@ func OSDDecode(llr [LDPCn]float64, keff int, apmask [LDPCn]int8, norder int) ([L
 		}
 	}
 
-	// Order-0 message: hard decisions on the k MRB bits.
+	// Order-0: hard decisions on the k MRB bits.
 	var m0 [k]int8
 	copy(m0[:], hdecR[:k])
 
-	// Encode m0.
 	c0 := mrbEncode(m0, g2, n, k)
 	nxor := xorDist(c0, hdecR)
 	nhardMin := sum8(nxor[:n])
 	dmin := dotProduct(nxor[:n], absR[:n])
 	bestCW := reorder(c0, indexMap, n)
 
-	if norder == 0 {
+	if ndeep == 0 {
 		msg91, ok := extractMsg91(bestCW)
 		if ok {
 			return msg91, bestCW, nhardMin, true
@@ -347,21 +349,204 @@ func OSDDecode(llr [LDPCn]float64, keff int, apmask [LDPCn]int8, norder int) ([L
 		return [k]int8{}, [n]int8{}, -nhardMin, false
 	}
 
-	// Order-1: flip each of the k MRB bits.
-	for i1 := 0; i1 < k; i1++ {
-		if apmask[indexMap[i1]] == 1 {
-			continue
+	// Determine search parameters from ndeep (matching Fortran table).
+	if ndeep > 6 {
+		ndeep = 6
+	}
+	var nord, npre1, npre2, nt, ntheta, ntau int
+	switch ndeep {
+	case 1:
+		nord, npre1, npre2, nt, ntheta = 1, 0, 0, 40, 12
+	case 2:
+		nord, npre1, npre2, nt, ntheta = 1, 1, 0, 40, 10
+	case 3:
+		nord, npre1, npre2, nt, ntheta, ntau = 1, 1, 1, 40, 12, 14
+	case 4:
+		nord, npre1, npre2, nt, ntheta, ntau = 2, 1, 1, 40, 12, 17
+	case 5:
+		nord, npre1, npre2, nt, ntheta, ntau = 3, 1, 1, 40, 12, 15
+	default: // ndeep=6
+		nord, npre1, npre2, nt, ntheta, ntau = 4, 1, 1, 95, 12, 15
+	}
+
+	// Order-1..nord: combinatorial flip search with parity pre-test.
+	for iorder := 1; iorder <= nord; iorder++ {
+		// Initialise pattern: last `iorder` positions set to 1.
+		misub := make([]int8, k)
+		for i := k - iorder; i < k; i++ {
+			misub[i] = 1
 		}
-		var me [k]int8
-		copy(me[:], m0[:])
-		me[i1] ^= 1
-		ce := mrbEncode(me, g2, n, k)
-		nxorE := xorDist(ce, hdecR)
-		dd := dotProduct(nxorE[:n], absR[:n])
-		if dd < dmin {
-			dmin = dd
-			bestCW = reorder(ce, indexMap, n)
-			nhardMin = sum8(nxorE[:n])
+		iflag := k - iorder // 0-indexed lowest-1 position (Fortran would be k-iorder+1)
+
+		for iflag >= 0 {
+			// Determine scan range for the npre1 optimisation.
+			iend := 0
+			if iorder == nord && npre1 == 0 {
+				iend = iflag
+			}
+
+			var d1 float64
+			var e2sub [m]int8
+			for n1 := iflag; n1 >= iend; n1-- {
+				// Build mi = misub with bit n1 also set.
+				var mi [k]int8
+				copy(mi[:], misub)
+				mi[n1] = 1
+
+				// Skip if any flipped bit overlaps an AP-pinned position.
+				skip := false
+				for j := 0; j < k; j++ {
+					if apmaskR[j] == 1 && mi[j] == 1 {
+						skip = true
+						break
+					}
+				}
+				if skip {
+					continue
+				}
+
+				// me = m0 XOR mi
+				var me [k]int8
+				for j := 0; j < k; j++ {
+					me[j] = m0[j] ^ mi[j]
+				}
+
+				var e2 [m]int8
+				var nd1kpt int
+				if n1 == iflag {
+					ce := mrbEncode(me, g2, n, k)
+					for j := 0; j < m; j++ {
+						e2sub[j] = ce[k+j] ^ hdecR[k+j]
+					}
+					copy(e2[:], e2sub[:])
+					nd1kpt = 1
+					for j := 0; j < nt && j < m; j++ {
+						nd1kpt += int(e2sub[j])
+					}
+					// Compute d1 = distance in the message part.
+					d1 = 0
+					for j := 0; j < k; j++ {
+						d1 += float64(me[j]^hdecR[j]) * absR[j]
+					}
+				} else {
+					// Quick update: XOR with the g2 column for bit n1.
+					for j := 0; j < m; j++ {
+						e2[j] = e2sub[j] ^ g2[k+j][n1]
+					}
+					nd1kpt = 2
+					for j := 0; j < nt && j < m; j++ {
+						nd1kpt += int(e2[j])
+					}
+				}
+
+				if nd1kpt <= ntheta || (iorder == 1 && n1 == iflag) {
+					ce := mrbEncode(me, g2, n, k)
+					nxorE := xorDist(ce, hdecR)
+					var dd float64
+					if n1 == iflag {
+						dd = d1 + dotProduct8(e2sub[:], absR[k:k+m])
+					} else {
+						dd = d1 + float64(ce[n1]^hdecR[n1])*absR[n1] + dotProduct8(e2[:], absR[k:k+m])
+					}
+					if dd < dmin {
+						dmin = dd
+						bestCW = reorder(ce, indexMap, n)
+						nhardMin = sum8(nxorE[:n])
+					}
+				}
+			}
+			// Advance to next pattern of weight iorder.
+			iflag = nextpat91(misub, k, iorder)
+		}
+	}
+
+	// Second pre-processing rule: hash-based pair-flip search.
+	if npre2 == 1 {
+		// Build hash table: for each pair (i1, i2), compute their combined
+		// parity syndrome over the first ntau parity positions and store.
+		hashFP := make(map[int][]osdPairEntry)
+		for i1 := k - 1; i1 >= 0; i1-- {
+			for i2 := i1 - 1; i2 >= 0; i2-- {
+				// Compute ntau-bit syndrome pattern.
+				ipat := 0
+				for t := 0; t < ntau && t < m; t++ {
+					bit := g2[k+t][i1] ^ g2[k+t][i2]
+					if bit == 1 {
+						ipat |= 1 << uint(ntau-1-t)
+					}
+				}
+				hashFP[ipat] = append(hashFP[ipat], osdPairEntry{i1: i1, i2: i2})
+			}
+		}
+
+		// Run through order-nord patterns and look up pair-flip matches.
+		misub2 := make([]int8, k)
+		for i := k - nord; i < k; i++ {
+			misub2[i] = 1
+		}
+		iflag2 := k - nord
+
+		for iflag2 >= 0 {
+			var me [k]int8
+			for j := 0; j < k; j++ {
+				me[j] = m0[j] ^ misub2[j]
+			}
+			ce := mrbEncode(me, g2, n, k)
+			var e2sub2 [m]int8
+			for j := 0; j < m; j++ {
+				e2sub2[j] = ce[k+j] ^ hdecR[k+j]
+			}
+
+			for i2t := 0; i2t <= ntau && i2t <= m; i2t++ {
+				// Build r2pat = e2sub XOR unit vector at position i2t.
+				ipat := 0
+				for t := 0; t < ntau && t < m; t++ {
+					bit := e2sub2[t]
+					if t == i2t && i2t > 0 {
+						bit ^= 1
+					}
+					if bit == 1 {
+						ipat |= 1 << uint(ntau-1-t)
+					}
+				}
+
+				entries := hashFP[ipat]
+				for _, ent := range entries {
+					in1, in2 := ent.i1, ent.i2
+					var mi [k]int8
+					copy(mi[:], misub2)
+					mi[in1] = 1
+					mi[in2] = 1
+
+					// Check weight and AP mask.
+					wt := 0
+					skip := false
+					for j := 0; j < k; j++ {
+						wt += int(mi[j])
+						if apmaskR[j] == 1 && mi[j] == 1 {
+							skip = true
+							break
+						}
+					}
+					if skip || wt < nord+npre1+npre2 {
+						continue
+					}
+
+					var me2 [k]int8
+					for j := 0; j < k; j++ {
+						me2[j] = m0[j] ^ mi[j]
+					}
+					ce2 := mrbEncode(me2, g2, n, k)
+					nxorE := xorDist(ce2, hdecR)
+					dd := dotProduct(nxorE[:n], absR[:n])
+					if dd < dmin {
+						dmin = dd
+						bestCW = reorder(ce2, indexMap, n)
+						nhardMin = sum8(nxorE[:n])
+					}
+				}
+			}
+			iflag2 = nextpat91(misub2, k, nord)
 		}
 	}
 
@@ -370,6 +555,63 @@ func OSDDecode(llr [LDPCn]float64, keff int, apmask [LDPCn]int8, norder int) ([L
 		return msg91, bestCW, nhardMin, true
 	}
 	return [k]int8{}, [n]int8{}, -nhardMin, false
+}
+
+// osdPairEntry stores a pair of MRB bit indices for the hash-based pair-flip search.
+type osdPairEntry struct {
+	i1, i2 int
+}
+
+// nextpat91 generates the next test error pattern of weight iorder among k positions.
+// mi is modified in place. Returns the 0-indexed position of the lowest set bit,
+// or -1 when all patterns of this weight have been exhausted.
+//
+// Port of subroutine nextpat91 from wsjt-wsjtx/lib/ft8/osd174_91.f90 lines 307–334.
+func nextpat91(mi []int8, k, iorder int) int {
+	// Find the rightmost 0→1 transition (0-indexed).
+	ind := -1
+	for i := 0; i < k-1; i++ {
+		if mi[i] == 0 && mi[i+1] == 1 {
+			ind = i
+		}
+	}
+	if ind < 0 {
+		return -1 // no more patterns
+	}
+
+	ms := make([]int8, k)
+	copy(ms, mi[:ind])
+	ms[ind] = 1
+	// ms[ind+1] stays 0 (already zero from make).
+	if ind+1 < k {
+		// Count how many 1s we still need at the tail.
+		s := 0
+		for _, v := range ms {
+			s += int(v)
+		}
+		nz := iorder - s
+		for i := k - nz; i < k; i++ {
+			ms[i] = 1
+		}
+	}
+	copy(mi, ms)
+
+	// Find the lowest-index 1 bit.
+	for i := 0; i < k; i++ {
+		if mi[i] == 1 {
+			return i
+		}
+	}
+	return -1
+}
+
+// dotProduct8 computes the dot product of int8 bits and float64 weights.
+func dotProduct8(bits []int8, weights []float64) float64 {
+	s := 0.0
+	for i := range bits {
+		s += float64(bits[i]) * weights[i]
+	}
+	return s
 }
 
 // mrbEncode encodes a k-bit message vector me using the transformed generator g2.
@@ -466,8 +708,13 @@ type DecodeResult struct {
 //	maxOSD = 0: BP then one OSD call with channel LLRs
 //	maxOSD > 0: BP then up to maxOSD OSD calls with accumulated LLR sums
 //
+// ndeep controls OSD search depth (passed to OSDDecode):
+//
+//	0=order-0, 1=order-1, 2=order-1+pre1, 3=order-1+pre1+pre2,
+//	4=order-2+pre1+pre2, 5=order-3+pre, 6=order-4+pre.
+//
 // Port of subroutine decode174_91 from wsjt-wsjtx/lib/ft8/decode174_91.f90.
-func Decode174_91(llr [LDPCn]float64, keff, maxOSD, norder int, apmask [LDPCn]int8) (DecodeResult, bool) {
+func Decode174_91(llr [LDPCn]float64, keff, maxOSD, ndeep int, apmask [LDPCn]int8) (DecodeResult, bool) {
 	const (
 		n = LDPCn
 		m = LDPCm
@@ -651,7 +898,7 @@ func Decode174_91(llr [LDPCn]float64, keff, maxOSD, norder int, apmask [LDPCn]in
 		} else {
 			zIn = zsave[i]
 		}
-		msg91, cw, nHard, ok := OSDDecode(zIn, keff, apmask, norder)
+		msg91, cw, nHard, ok := OSDDecode(zIn, keff, apmask, ndeep)
 		if ok && nHard > 0 {
 			// Compute dmin.
 			var hdec [n]int8

@@ -99,8 +99,9 @@ func DecodeSingle(
 	params DecodeParams,
 ) (DecodeCandidate, bool) {
 	const (
-		maxOSD    = 2
-		norderOSD = 2
+		maxOSD  = 2
+		ndeepD2 = 2 // Depth 2: order-1 with npre1
+		ndeepD3 = 4 // Depth 3: order-2 with npre1 + npre2
 	)
 
 	// ── Step 1: downconvert and downsample ────────────────────────────────
@@ -198,10 +199,12 @@ func DecodeSingle(
 	}
 
 	maxOSD2 := -1
+	ndeep := ndeepD2
 	if params.Depth == 2 {
 		maxOSD2 = 0
 	} else if params.Depth == 3 {
 		maxOSD2 = maxOSD
+		ndeep = ndeepD3
 	}
 
 	for ipass := 0; ipass < npasses; ipass++ {
@@ -227,7 +230,7 @@ func DecodeSingle(
 			}
 		}
 
-		res, ok := Decode174_91(llrz, LDPCk, maxOSD2, norderOSD, apmask)
+		res, ok := Decode174_91(llrz, LDPCk, maxOSD2, ndeep, apmask)
 		if !ok {
 			continue
 		}

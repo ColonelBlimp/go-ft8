@@ -4,7 +4,7 @@
 **Module:** `github.com/ColonelBlimp/go-ft8`
 **Package:** `ft8x`
 **Go version:** 1.25
-**Total code:** ~4,640 lines across 18 Go files
+**Total code:** ~5,100 lines across 18 Go files
 
 ---
 
@@ -18,7 +18,7 @@
 | 2 | Replace logging/errors (stdlib) | ✅ Done (was already stdlib) | — |
 | 3 | Port sync8 candidate detection | ✅ Done | `sync8.go`, `sync8_test.go` |
 | 4 | Port mixed-radix FFT | ✅ Done | `fft_mixedradix.go`, `fft_mixedradix_test.go`, `fft.go` updated |
-| 5 | Upgrade OSD to order-2 with zsave | ❌ Not started | `ldpc.go` |
+| 5 | Upgrade OSD to order-2 with zsave | ✅ Done | `ldpc.go`, `decode.go`, `ft8_test.go` |
 | 6 | Port AP decoding | ❌ Not started | New `ap.go` + `decode.go` changes |
 | 7 | Add plausibility filters | ❌ Not started | New `validate.go` |
 | 8 | Port iterative signal subtraction | ❌ Not started | `decode.go` changes |
@@ -34,6 +34,16 @@
 
 4. **CLI** (`cmd/ft8decode/main.go`, 97 lines) — Minimal CLI that loads a WAV file, runs `FindCandidates` + `Decode`, and prints results.
 
+5. **OSD order-2 with zsave chain** (`ldpc.go`, `decode.go`) — Faithful port of WSJT-X `osd174_91.f90`. `OSDDecode()` now accepts a `ndeep` parameter (0–6) controlling search depth, matching the Fortran's `ndeep` table: `ndeep=1` → order-1; `ndeep=2` → order-1 with npre1 pre-test; `ndeep=3` → order-1 with npre1 + npre2 hash pair-flip; `ndeep=4` → order-2 with pre-processing; etc. Key additions:
+   - **`nextpat91()`** — Port of the Fortran combinatorial pattern generator for weight-N error patterns among k=91 positions.
+   - **`ntheta` parity pre-test** — Fast rejection of unlikely candidates using the first `nt` parity syndrome bits, with a bypass for order-1 base patterns to avoid marginal-signal regressions.
+   - **Hash-based pair-flip search** (`npre2`) — For `ndeep≥3`, builds a hash table mapping `ntau`-bit parity syndromes to `(i1, i2)` bit-flip pairs, then looks up matching pair-flips for each base pattern. Uses Go `map[int][]osdPairEntry` instead of Fortran linked-list common block.
+   - **`Decode174_91`** signature updated: `norder` → `ndeep` parameter.
+   - **`DecodeSingle`** maps `Depth=2` → `ndeep=2` (order-1 + pre-test), `Depth=3` → `ndeep=4` (order-2 + pair-flip).
+   - **`platanh`** retained as `math.Atanh` with clamping (not the Fortran piecewise-linear version), since the BP scaling was tuned with it.
+   - Added `TestNextpat91`, `TestOSDRoundTrip`, and `TestPlatanh` unit tests.
+   - The zsave chain (cumulative posterior LLR snapshots at BP iterations 1–3) was already structurally correct; now feeds into the upgraded OSD.
+
 ### Current test results
 
 ```
@@ -42,7 +52,10 @@ Capture 2 provided candidates:  9/15 correct, 0 false  (baseline: ≥9)
 Capture 1 sync8 own candidates: 5/13 correct, 0 false
 Capture 2 sync8 own candidates: 7/15 correct, 0 false
 All unit tests:                  PASS
+OSD round-trip (ndeep=4):        PASS (5 bit errors recovered)
+nextpat91 pattern counts:        PASS (verified C(k,w) for multiple k,w)
 Mixed-radix FFT accuracy:       <1e-9 round-trip error
+Full test suite:                 27 s
 ```
 
 ### Benchmark data (Intel i3-10100F @ 3.60 GHz)
@@ -57,23 +70,6 @@ Full WAV decode (provided candidates): ~4 s
 ---
 
 ## What to do next
-
-### Step 5: Upgrade OSD to order-2 with zsave chain
-
-**Goal:** Improve LDPC decode sensitivity by adding order-2 pair-flip search (91 single + 4,095 pair flips) and zsave chain (BP posterior LLR snapshots at iterations 1–3 fed into OSD).
-
-**Where:** `ldpc.go` — the current `OSD174_91()` function does order-1 only.
-
-**Reference sources:**
-- WSJT-X: `~/Development/wsjt-wsjtx/lib/ft8/osd174_91.f90`
-- The assessment §2.2 describes the zsave chain and OSD-2 algorithm
-- The old modular codec had this in `codec/osd.go` and `codec/decoder.go` (deleted, but described in the assessment)
-
-**Key changes needed:**
-1. In `BPDecode()`: collect zsave snapshots at BP iterations (cumulative posterior LLRs)
-2. In `OSD174_91()`: add order-2 pair-flip loop after order-1 single-flip
-3. In `Decode174_91()`: pass zsave through the OSD chain, try zsave[0] then zsave[1]
-4. Port the piecewise-linear `platanh()` from WSJT-X to replace the current simpler clamp
 
 ### Step 6: Port AP decoding
 
@@ -106,7 +102,7 @@ Full WAV decode (provided candidates): ~4 s
 
 ## Known issues and decisions
 
-1. **Sync8 own-candidates decode gap** — Sync8 finds candidates near all 13 reference signals, but only 5 decode vs 7 with provided candidates. The gap is caused by the decoder's coarse time search radius (±10 samples = ±0.05s) being too narrow for some sync8 candidate positions. This will improve with OSD-2 (stronger decoder) and signal subtraction (iterative re-processing).
+1. **Sync8 own-candidates decode gap** — Sync8 finds candidates near all 13 reference signals, but only 5 decode vs 7 with provided candidates. The gap is caused by the decoder's coarse time search radius (±10 samples = ±0.05s) being too narrow for some sync8 candidate positions. This will improve with signal subtraction (iterative re-processing) and AP decoding.
 
 2. **Mixed-radix FFT memory** — The recursive implementation allocates O(n × log n) temporary memory. An iterative Stockham approach would reduce this to O(n). Acceptable for Phase 1; optimize in Phase 2 if profiling shows GC pressure.
 
@@ -114,3 +110,6 @@ Full WAV decode (provided candidates): ~4 s
 
 4. **WAV test files** — Some large WAV files in `testdata/` are git-ignored. The two primary captures (`ft8test_capture_20260410.wav`, `ft8test_capture2_20260410.wav`) are tracked. Tests skip gracefully if files are missing.
 
+5. **platanh: math.Atanh vs Fortran piecewise** — The Fortran piecewise-linear `platanh` (from `platanh.f90`) was tested but caused a 1-decode regression in Capture 1 because the BP decoder's LLR scaling (`ScaleFac=2.83`) was tuned with `math.Atanh`. The piecewise version amplifies small values by ~20% (`x/0.83` vs `x`) which shifts BP convergence. Retained `math.Atanh` with ±19.07 clamping. May revisit when ScaleFac is re-tuned in a later step.
+
+6. **OSD ntheta pre-test bypass for order-1** — The Fortran `ntheta` pre-test rejects OSD candidates whose parity error count exceeds a threshold. For order-1 base patterns (91 candidates, cheap to evaluate), the pre-test is bypassed to avoid marginal-signal regressions. Higher-order patterns still use the pre-test for performance.
