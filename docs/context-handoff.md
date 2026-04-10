@@ -4,7 +4,7 @@
 **Module:** `github.com/ColonelBlimp/go-ft8`
 **Package:** `ft8x`
 **Go version:** 1.25
-**Total code:** ~5,400 lines across 20 Go files
+**Total code:** ~5,700 lines across 22 Go files
 
 ---
 
@@ -20,7 +20,7 @@
 | 4 | Port mixed-radix FFT | ✅ Done | `fft_mixedradix.go`, `fft_mixedradix_test.go`, `fft.go` updated |
 | 5 | Upgrade OSD to order-2 with zsave | ✅ Done | `ldpc.go`, `decode.go`, `ft8_test.go` |
 | 6 | Port AP decoding | ✅ Done | `ap.go`, `ap_test.go`, `decode.go` |
-| 7 | Add plausibility filters | ❌ Not started | New `validate.go` |
+| 7 | Add plausibility filters | ✅ Done | `validate.go`, `validate_test.go`, `decode.go` |
 | 8 | Port iterative signal subtraction | ❌ Not started | `decode.go` changes |
 | 9 | Comprehensive testing | ❌ Not started | Test updates |
 
@@ -52,6 +52,12 @@
    - **`ap_test.go`** — Tests for `ComputeAPSymbols` (CQ bipolar verification, round-trip), `ApplyAP` (mask position counts, LLR magnitude checks for all 6 AP types), `APPassTypes` (selection logic), and a synthetic weak-signal test demonstrating AP type 1 recovering a CQ message that regular BP cannot decode.
    - AP is opt-in: existing tests and `DefaultDecodeParams()` have `APEnabled=false`, so regression baselines are unaffected.
 
+7. **Plausibility filters** (`validate.go`, `validate_test.go`, `decode.go`) — Callsign and message plausibility validation to reject false decodes. Key additions:
+   - **`PlausibleCallsign()`** — Validates ITU callsign structure matching WSJT-X's `pack28` encoding rules (from `packjt77.f90` lines 708–738): finds the last digit (call-area digit), verifies it's at position 2 or 3 (1-indexed), checks prefix has ≥1 letter and isn't all digits, checks suffix is 1–3 letters. Handles special tokens (CQ, DE, QRZ), CQ suffixes, hash-encoded calls (`<...>`), and `/R`/`/P` suffixes.
+   - **`PlausibleMessage()`** — Parses decoded message into fields, identifies callsign fields vs tokens (reports, grids, RRR/RR73/73, etc.), and validates each callsign field with `PlausibleCallsign()`. Free-text and hashed-call messages are always accepted.
+   - **`DecodeSingle`** now calls `PlausibleMessage()` after `Unpack77` succeeds, rejecting implausible messages before SNR computation.
+   - **`validate_test.go`** — Tests for valid callsigns (30 real WSJT-X reference callsigns, with/without suffixes, special tokens), invalid callsigns (too short/long, all-letter, all-digit, special chars), valid messages (all 18 capture reference messages), invalid messages, and a dedicated WSJT-X capture callsign test.
+
 ### Current test results
 
 ```
@@ -60,11 +66,12 @@ Capture 2 provided candidates:  9/15 correct, 0 false  (baseline: ≥9)
 Capture 1 sync8 own candidates: 5/13 correct, 0 false
 Capture 2 sync8 own candidates: 7/15 correct, 0 false
 All unit tests:                  PASS
+Plausibility filters:            PASS (30 valid, 6 invalid callsigns; 18 valid messages)
 AP CQ weak-signal decode:        PASS (4 hard errors recovered with AP)
 OSD round-trip (ndeep=4):        PASS (5 bit errors recovered)
 nextpat91 pattern counts:        PASS (verified C(k,w) for multiple k,w)
 Mixed-radix FFT accuracy:       <1e-9 round-trip error
-Full test suite:                 27 s
+Full test suite:                 28 s
 ```
 
 ### Benchmark data (Intel i3-10100F @ 3.60 GHz)
@@ -80,11 +87,6 @@ Full WAV decode (provided candidates): ~4 s
 
 ## What to do next
 
-### Step 7: Add plausibility filters
-
-**Goal:** Reject false decodes by validating callsign structure (ITU format) and message plausibility.
-
-**Reference:** The old `message/validate.go` had `PlausibleCallsign()` and `PlausibleMessage()`.
 
 ### Step 8: Port iterative signal subtraction
 

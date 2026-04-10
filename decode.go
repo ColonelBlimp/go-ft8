@@ -320,6 +320,11 @@ func DecodeSingle(
 			continue
 		}
 
+		// Plausibility filter: reject messages with implausible callsigns.
+		if !PlausibleMessage(strings.TrimRight(msg, " ")) {
+			continue
+		}
+
 		// Compute tones and SNR.
 		itone := GenFT8Tones(msg77)
 
