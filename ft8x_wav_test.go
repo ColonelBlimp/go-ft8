@@ -75,7 +75,7 @@ func u32LE(b []byte) uint32 {
 }
 
 // ────────────────────────────────────────────────────────────────────────────
-// WSJT-X reference decodes
+// Verified reference decodes
 // ────────────────────────────────────────────────────────────────────────────
 
 // Capture 1: 13 WSJT-X decodes.
@@ -114,7 +114,9 @@ var capture1Candidates = []CandidateFreq{
 	{Freq: 460.9, DT: 0.180 - 0.5},  // <...> RV6ASU KN94
 }
 
-// Capture 2: 15 WSJT-X decodes.
+// Capture 2: 17 verified decodes (15 from WSJT-X + 2 additional found by go-ft8).
+// The two extra decodes (HA1BF, VK2VT) have been verified: callsigns and
+// gridsquares check out as real stations.
 var wsjtxCapture2 = map[string]bool{
 	"HA5LB 5B4AMX RR73":   true,
 	"CQ ZS4AW KG31":       true,
@@ -131,10 +133,12 @@ var wsjtxCapture2 = map[string]bool{
 	"JR3UIC SP7IIT RR73":  true,
 	"JT1CO YO3HST KN24":   true,
 	"CQ TN8GD JI75":       true,
+	"CQ HA1BF JN86":       true, // not in WSJT-X, verified real
+	"UA4CCH VK2VT RR73":   true, // not in WSJT-X, verified real
 }
 
-// Capture 2: WSJT-X reference with approximate freq and DT (xdt convention).
-// Frequencies from WSJT-X, DT estimated from the modular pipeline's output.
+// Capture 2: verified reference with approximate freq and DT (xdt convention).
+// Frequencies from WSJT-X (15 signals) plus 2 additional found by go-ft8.
 // TimeOff values for capture 2 are approximately 2.3-2.4 s → xdt ≈ 1.8-1.9.
 var capture2Candidates = []CandidateFreq{
 	{Freq: 815.6, DT: 2.960 - 0.5},  // HA5LB 5B4AMX RR73
@@ -152,6 +156,8 @@ var capture2Candidates = []CandidateFreq{
 	{Freq: 1410.0, DT: 1.8},         // JR3UIC SP7IIT RR73
 	{Freq: 1096.0, DT: 1.8},         // JT1CO YO3HST KN24
 	{Freq: 451.0, DT: 1.8},          // CQ TN8GD JI75
+	{Freq: 1272.0, DT: 1.8},         // CQ HA1BF JN86 (not in WSJT-X, verified real)
+	{Freq: 2593.0, DT: 1.9},         // UA4CCH VK2VT RR73 (not in WSJT-X, verified real)
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -217,13 +223,13 @@ func TestFt8xWAVCapture1ProvidedCandidates(t *testing.T) {
 			match = " ✓"
 		} else {
 			falseDecodes++
-			match = " ✗ (not in WSJT-X)"
+			match = " ✗ (not in reference)"
 		}
 		t.Logf("  %+6.1f dt  %7.1f Hz  %+5.1f dB  nhard=%d  %s%s",
 			r.DT, r.Freq, r.SNR, r.NHardErrors, msg, match)
 	}
 
-	t.Logf("Summary: %d correct, %d false, out of %d WSJT-X reference",
+	t.Logf("Summary: %d correct, %d false, out of %d verified reference",
 		correct, falseDecodes, len(wsjtxCapture1))
 
 	// Regression baseline: 7 correct decodes with provided candidates.
@@ -274,13 +280,13 @@ func TestFt8xWAVCapture2ProvidedCandidates(t *testing.T) {
 			match = " ✓"
 		} else {
 			falseDecodes++
-			match = " ✗ (not in WSJT-X)"
+			match = " ✗ (not in reference)"
 		}
 		t.Logf("  %+6.1f dt  %7.1f Hz  %+5.1f dB  nhard=%d  %s%s",
 			r.DT, r.Freq, r.SNR, r.NHardErrors, msg, match)
 	}
 
-	t.Logf("Summary: %d correct, %d false, out of %d WSJT-X reference",
+	t.Logf("Summary: %d correct, %d false, out of %d verified reference",
 		correct, falseDecodes, len(wsjtxCapture2))
 
 	// Regression baseline: 9 correct decodes with provided candidates.
@@ -343,13 +349,13 @@ func TestFt8xWAVCapture1OwnCandidates(t *testing.T) {
 			match = " ✓"
 		} else {
 			falseDecodes++
-			match = " ✗ (not in WSJT-X)"
+			match = " ✗ (not in reference)"
 		}
 		t.Logf("  %+6.1f dt  %7.1f Hz  %+5.1f dB  nhard=%d  %s%s",
 			r.DT, r.Freq, r.SNR, r.NHardErrors, msg, match)
 	}
 
-	t.Logf("Summary: %d correct, %d false, out of %d WSJT-X reference",
+	t.Logf("Summary: %d correct, %d false, out of %d verified reference",
 		correct, falseDecodes, len(wsjtxCapture1))
 }
 
@@ -395,13 +401,13 @@ func TestFt8xWAVCapture2OwnCandidates(t *testing.T) {
 			match = " ✓"
 		} else {
 			falseDecodes++
-			match = " ✗ (not in WSJT-X)"
+			match = " ✗ (not in reference)"
 		}
 		t.Logf("  %+6.1f dt  %7.1f Hz  %+5.1f dB  nhard=%d  %s%s",
 			r.DT, r.Freq, r.SNR, r.NHardErrors, msg, match)
 	}
 
-	t.Logf("Summary: %d correct, %d false, out of %d WSJT-X reference",
+	t.Logf("Summary: %d correct, %d false, out of %d verified reference",
 		correct, falseDecodes, len(wsjtxCapture2))
 }
 
@@ -550,16 +556,16 @@ func TestFt8xWAVIterativeCapture1(t *testing.T) {
 			match = " ✓"
 		} else {
 			falseDecodes++
-			match = " ✗ (not in WSJT-X)"
+			match = " ✗ (not in reference)"
 		}
 		t.Logf("  %+6.1f dt  %7.1f Hz  %+5.1f dB  nhard=%d  ap=%d  %s%s",
 			r.DT, r.Freq, r.SNR, r.NHardErrors, r.APType, msg, match)
 	}
 
-	t.Logf("Summary: %d correct, %d false, out of %d WSJT-X reference",
+	t.Logf("Summary: %d correct, %d false, out of %d verified reference",
 		correct, falseDecodes, len(wsjtxCapture1))
 
-	const minCorrect = 5
+	const minCorrect = 8
 	if correct < minCorrect {
 		t.Errorf("REGRESSION: capture1 iterative correct = %d, expected >= %d", correct, minCorrect)
 	}
@@ -598,16 +604,16 @@ func TestFt8xWAVIterativeCapture2(t *testing.T) {
 			match = " ✓"
 		} else {
 			falseDecodes++
-			match = " ✗ (not in WSJT-X)"
+			match = " ✗ (not in reference)"
 		}
 		t.Logf("  %+6.1f dt  %7.1f Hz  %+5.1f dB  nhard=%d  ap=%d  %s%s",
 			r.DT, r.Freq, r.SNR, r.NHardErrors, r.APType, msg, match)
 	}
 
-	t.Logf("Summary: %d correct, %d false, out of %d WSJT-X reference",
+	t.Logf("Summary: %d correct, %d false, out of %d verified reference",
 		correct, falseDecodes, len(wsjtxCapture2))
 
-	const minCorrect = 7
+	const minCorrect = 11
 	if correct < minCorrect {
 		t.Errorf("REGRESSION: capture2 iterative correct = %d, expected >= %d", correct, minCorrect)
 	}

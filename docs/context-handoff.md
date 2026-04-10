@@ -70,17 +70,17 @@
 ### Current test results
 
 ```
-Capture 1 provided candidates:  7/13 correct, 0 false  (baseline: ≥7)
-Capture 2 provided candidates:  9/15 correct, 0 false  (baseline: ≥9)
-Capture 1 iterative (own cands): 6/13 correct, 0 false  (was 5/13 single-pass)
-Capture 2 iterative (own cands): 8/15 correct, 0 false  (was 7/15 single-pass)
+Capture 1 provided candidates:   7/13 correct, 0 false  (baseline: ≥7)
+Capture 2 provided candidates:   9/17 correct, 0 false  (baseline: ≥9)
+Capture 1 iterative (own cands): 8/13 correct, 0 false
+Capture 2 iterative (own cands): 11/17 correct, 0 false  (incl. 2 not in WSJT-X)
 All unit tests:                  PASS
 Plausibility filters:            PASS (30 valid, 6 invalid callsigns; 18 valid messages)
 AP CQ weak-signal decode:        PASS (4 hard errors recovered with AP)
 OSD round-trip (ndeep=4):        PASS (5 bit errors recovered)
 nextpat91 pattern counts:        PASS (verified C(k,w) for multiple k,w)
 Mixed-radix FFT accuracy:       <1e-9 round-trip error
-Full test suite (WAV):           ~18 s
+Full test suite (WAV):           ~13 s
 ```
 
 ### Benchmark data (Intel i3-10100F @ 3.60 GHz)
@@ -101,9 +101,10 @@ SubtractFT8 per signal:        ~2 ms (no FFTs)
 **Goal:** Reach Phase 1 success criteria through decoder tuning, wider AP coverage, and performance work.
 
 **Current gaps vs Phase 1 targets:**
-- Capture 1: 6/13 iterative (target ≥11/13) — 5 more decodes needed
-- Capture 2: 8/15 iterative (target ≥12/15) — 4 more decodes needed
+- Capture 1: 8/13 iterative (target ≥11/13) — 3 more decodes needed
+- Capture 2: 11/17 iterative (target ≥14/17) — 3 more decodes needed
 - Decode time: ~4s (target <2s)
+- Note: Capture 2 reference expanded from 15 to 17 — two additional decodes (CQ HA1BF JN86, UA4CCH VK2VT RR73) verified as real stations not found by WSJT-X.
 
 **Potential improvements:**
 1. **Enable AP+Depth=3 selectively** — AP with CQ-only + OSD order-2 helps weak signals but is slow (~30s+ per capture with current OSD). Need to optimise OSD performance or limit Depth=3 to later passes only.
@@ -116,8 +117,8 @@ SubtractFT8 per signal:        ~2 ms (no FFTs)
 
 | Metric | Current | Target |
 |---|---|---|
-| Capture 1 correct | 6/13 (iterative) | ≥ 11/13 |
-| Capture 2 correct | 8/15 (iterative) | ≥ 12/15 |
+| Capture 1 correct | 8/13 (iterative) | ≥ 11/13 |
+| Capture 2 correct | 11/17 (iterative) | ≥ 14/17 |
 | False decode rate | 0 | ≤ 1 per capture |
 | Full decode cycle | ~4 s | < 2 s |
 

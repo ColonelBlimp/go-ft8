@@ -2,7 +2,6 @@ package ft8x
 
 import (
 	"fmt"
-	"math"
 	"testing"
 )
 
@@ -247,20 +246,22 @@ func TestOSDRoundTrip(t *testing.T) {
 	t.Logf("OSD ndeep=4: nhard=%d, decoded OK", nhard)
 }
 
-// TestPlatanh verifies the protected atanh clamp.
+// TestPlatanh verifies the piecewise-linear atanh approximation
+// (ported from WSJT-X platanh.f90).
 func TestPlatanh(t *testing.T) {
 	tests := []struct {
 		x    float64
 		want float64
 	}{
 		{0.0, 0.0},
-		{0.5, math.Atanh(0.5)},
-		{-0.5, math.Atanh(-0.5)},
-		{0.9, math.Atanh(0.9)},
-		{1.0, 19.07},
-		{-1.0, -19.07},
-		{2.0, 19.07},
-		{-2.0, -19.07},
+		{0.5, 0.5 / 0.83},             // linear region: x/0.83
+		{-0.5, -0.5 / 0.83},           // symmetric
+		{0.9, (0.9 - 0.4064) / 0.322}, // second piece
+		{0.664, 0.664 / 0.83},         // boundary of first region
+		{1.0, 7.0},                    // clamp at 7.0
+		{-1.0, -7.0},
+		{2.0, 7.0}, // beyond ±1 still clamps at ±7
+		{-2.0, -7.0},
 	}
 	for _, tc := range tests {
 		got := platanh(tc.x)

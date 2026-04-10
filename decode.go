@@ -35,7 +35,7 @@ func DefaultDecodeParams() DecodeParams {
 	return DecodeParams{
 		Depth:     2,
 		APWidth:   25.0,
-		MaxPasses: 3,
+		MaxPasses: 5,
 	}
 }
 
@@ -129,7 +129,7 @@ func DecodeSingle(
 	for i := range ctwkZero {
 		ctwkZero[i] = complex(1, 0)
 	}
-	for idt := i0 - 20; idt <= i0+20; idt++ {
+	for idt := i0 - 10; idt <= i0+10; idt++ {
 		sync := Sync8d(cd0, idt, ctwkZero, 0)
 		if sync > smax {
 			smax = sync
@@ -231,7 +231,7 @@ func DecodeSingle(
 	maxOSD2 := -1
 	ndeep := ndeepD2
 	if params.Depth == 2 {
-		maxOSD2 = 0
+		maxOSD2 = 1 // 1 OSD call with accumulated BP sum
 	} else if params.Depth == 3 {
 		maxOSD2 = maxOSD
 		ndeep = ndeepD3
@@ -442,20 +442,29 @@ func DecodeIterative(audio []float32, params DecodeParams, freqMin, freqMax floa
 		// Lower threshold on later passes since subtraction reduces the
 		// noise floor, matching WSJT-X behaviour.
 		syncmin := 1.3
-		if pass == 0 && params.Depth <= 2 {
-			syncmin = 1.5
-		}
 		candidates := Sync8FindCandidates(dd, int(freqMin), int(freqMax), syncmin, 0, 600)
-		if len(candidates) > 200 {
-			candidates = candidates[:200]
-		}
 
 		// ── Decode each candidate ──────────────────────────────────
-		// Use lighter OSD on the first pass for speed (like Fortran's
-		// ndeep=2 on ipass=1 when ndepth=3).
+		// Enable AP CQ-only to aid weak CQ signal decoding.
+		// Match Fortran pass structure:
+		//   pass 0: lighter OSD (Depth=2 when params.Depth=3)
+		//   pass ≥ 1: full depth
+		//   last pass: Depth=3 with limited candidates (deepest search)
 		passParams := params
+		passParams.APEnabled = true
+		passParams.APCQOnly = true
 		if pass == 0 && params.Depth == 3 {
 			passParams.Depth = 2
+		}
+		if pass == maxPasses-1 && params.Depth >= 2 {
+			passParams.Depth = 3
+			if len(candidates) > 100 {
+				candidates = candidates[:100]
+			}
+		} else {
+			if len(candidates) > 300 {
+				candidates = candidates[:300]
+			}
 		}
 		ds := NewDownsampler()
 		newDecodes := 0

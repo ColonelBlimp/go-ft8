@@ -144,19 +144,29 @@ func BPDecode(llr [LDPCn]float64, apmask [LDPCn]int8, maxIterations int) ([LDPCn
 }
 
 // platanh is the "protected" atanh used in the BP check→variable message
-// update, clamping the argument to avoid ±∞ near ±1.
+// update. This is the piecewise-linear approximation from WSJT-X's
+// platanh.f90, co-designed with ScaleFac=2.83. It clamps at ±7.0 (much
+// tighter than math.Atanh's ±∞), which prevents extreme BP messages and
+// improves convergence on weak signals.
 //
-// Note: WSJT-X uses a piecewise-linear approximation (platanh.f90) which was
-// co-designed with the Fortran BP scaling. This Go port retains math.Atanh
-// with clamping because the ScaleFac and LLR pipeline were tuned with it.
+// Port of subroutine platanh from wsjt-wsjtx/lib/platanh.f90.
 func platanh(x float64) float64 {
-	if x >= 1.0 {
-		return 19.07 // atanh clamp
+	sign := 1.0
+	z := x
+	if x < 0 {
+		sign = -1.0
+		z = -x
 	}
-	if x <= -1.0 {
-		return -19.07
+	if z <= 0.664 {
+		return x / 0.83
+	} else if z <= 0.9217 {
+		return sign * (z - 0.4064) / 0.322
+	} else if z <= 0.9951 {
+		return sign * (z - 0.8378) / 0.0524
+	} else if z <= 0.9998 {
+		return sign * (z - 0.9914) / 0.0012
 	}
-	return math.Atanh(x)
+	return sign * 7.0
 }
 
 func sign64(x float64) int {
