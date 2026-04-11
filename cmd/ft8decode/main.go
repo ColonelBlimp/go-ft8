@@ -77,7 +77,7 @@ func loadWAV(path string) ([]float32, uint32, error) {
 			for i := 0; i < nFrames; i++ {
 				o := i * bytesPerFrame
 				v := int16(binary.LittleEndian.Uint16(pcm[o : o+2]))
-				samples[i] = float32(v) / 32768.0
+				samples[i] = float32(v) // raw int16→float32, matches Fortran dd=iwave (no /32768)
 			}
 			return samples, sr, nil
 		}

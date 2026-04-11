@@ -121,6 +121,7 @@ func DecodeSingle(
 	cd0 := ds.Downsample(dd, &newdat, f1)
 
 	// ── Step 2: coarse time search ────────────────────────────────────────
+	// Search ±10 steps around sync8's estimate (matching Fortran ft8b).
 	i0 := int(math.Round((xdt + 0.5) * Fs2))
 
 	smax := 0.0
@@ -472,7 +473,17 @@ func DecodeIterative(audio []float32, params DecodeParams, freqMin, freqMax floa
 			newdat := (i == 0) // 192k FFT once per pass
 			result, ok := DecodeSingle(dd, ds, cand.Freq, cand.DT, newdat, passParams)
 			if !ok {
-				continue
+				// Retry high-sync candidates with a baseband coarse time scan.
+				// sync8 may have found the right frequency but wrong DT.
+				if cand.SyncPower >= 2.0 {
+					altDT := basebandTimeScan(dd, ds, cand.Freq)
+					if math.Abs(altDT-cand.DT) > 0.1 {
+						result, ok = DecodeSingle(dd, ds, cand.Freq, altDT, false, passParams)
+					}
+				}
+				if !ok {
+					continue
+				}
 			}
 			if seen[result.Message] {
 				continue
@@ -494,6 +505,30 @@ func DecodeIterative(audio []float32, params DecodeParams, freqMin, freqMax floa
 	}
 
 	return allResults
+}
+
+// basebandTimeScan finds the best time offset for a signal at frequency f0
+// by doing a coarse Sync8d scan over the full NP2 range of the downsampled
+// baseband signal.  Returns the xdt value of the best sync peak.
+func basebandTimeScan(dd []float32, ds *Downsampler, f0 float64) float64 {
+	nd := false
+	cd0 := ds.Downsample(dd, &nd, f0)
+
+	var ctwkZero [32]complex128
+	for i := range ctwkZero {
+		ctwkZero[i] = complex(1, 0)
+	}
+
+	smax := 0.0
+	ibest := 0
+	for idt := 0; idt <= NP2; idt += 4 {
+		sync := Sync8d(cd0, idt, ctwkZero, 0)
+		if sync > smax {
+			smax = sync
+			ibest = idt
+		}
+	}
+	return float64(ibest-1) * Dt2
 }
 
 // FindCandidates searches for potential FT8 signals using the spectrogram-based
