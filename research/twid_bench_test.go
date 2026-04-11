@@ -1,7 +1,6 @@
 package research
 
 import (
-	ft8x "github.com/ColonelBlimp/go-ft8"
 	"math"
 	"testing"
 )
@@ -21,7 +20,7 @@ func realFFTNoTable(x []float32, n int) []complex128 {
 		}
 		z[k] = complex(re, im)
 	}
-	Z := ft8x.FFT(z)
+	Z := FFT(z)
 	out := make([]complex128, half+1)
 	out[0] = complex(real(Z[0])+imag(Z[0]), 0)
 	out[half] = complex(real(Z[0])-imag(Z[0]), 0)

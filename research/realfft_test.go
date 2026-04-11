@@ -1,4 +1,4 @@
-// realfft_test.go — Validates the optimized RealFFT against ft8x.RealFFT.
+// realfft_test.go — Validates the optimized RealFFT against RealFFT.
 
 package research
 
@@ -8,12 +8,10 @@ import (
 	"os"
 	"testing"
 	"time"
-
-	ft8x "github.com/ColonelBlimp/go-ft8"
 )
 
 // TestRealFFTMatchesFt8x verifies that our optimized RealFFT produces
-// identical results to ft8x.RealFFT for the sync8 spectrogram FFT size.
+// identical results to RealFFT for the sync8 spectrogram FFT size.
 func TestRealFFTMatchesFt8x(t *testing.T) {
 	const n = NFFT1 // 3840
 
@@ -26,8 +24,8 @@ func TestRealFFTMatchesFt8x(t *testing.T) {
 				30.0*math.Cos(2.0*math.Pi*2000.0*float64(i)/Fs))
 	}
 
-	// Reference: ft8x.RealFFT (full complex FFT, discard upper half)
-	ref := ft8x.RealFFT(x, n)
+	// Reference: RealFFT (full complex FFT, discard upper half)
+	ref := RealFFT(x, n)
 
 	// Optimized: our half-size pack/unpack version
 	opt := RealFFT(x, n)
@@ -91,7 +89,7 @@ func TestRealFFTWithCapture(t *testing.T) {
 		buf[k] = fac * dd[k]
 	}
 
-	ref := ft8x.RealFFT(buf, NFFT1)
+	ref := RealFFT(buf, NFFT1)
 	opt := RealFFT(buf, NFFT1)
 
 	maxErr := 0.0
@@ -138,10 +136,10 @@ func TestRealFFTPerformance(t *testing.T) {
 
 	const iters = 100
 
-	// Benchmark ft8x.RealFFT (full complex FFT)
+	// Benchmark RealFFT (full complex FFT)
 	start := time.Now()
 	for i := 0; i < iters; i++ {
-		ft8x.RealFFT(buf, NFFT1)
+		RealFFT(buf, NFFT1)
 	}
 	naiveDur := time.Since(start)
 
@@ -153,7 +151,7 @@ func TestRealFFTPerformance(t *testing.T) {
 	optDur := time.Since(start)
 
 	speedup := float64(naiveDur) / float64(optDur)
-	t.Logf("ft8x.RealFFT:  %d iters in %v  (%.1f µs/call)", iters, naiveDur, float64(naiveDur.Microseconds())/float64(iters))
+	t.Logf("RealFFT:  %d iters in %v  (%.1f µs/call)", iters, naiveDur, float64(naiveDur.Microseconds())/float64(iters))
 	t.Logf("research.RealFFT: %d iters in %v  (%.1f µs/call)", iters, optDur, float64(optDur.Microseconds())/float64(iters))
 	t.Logf("Speedup: %.2fx", speedup)
 }

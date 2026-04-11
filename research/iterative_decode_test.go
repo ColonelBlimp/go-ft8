@@ -28,8 +28,6 @@ import (
 	"os"
 	"strings"
 	"testing"
-
-	ft8x "github.com/ColonelBlimp/go-ft8"
 )
 
 // WSJT-X reference decodes for capture.wav (21 signals).
@@ -99,7 +97,7 @@ func TestIterativeDecode(t *testing.T) {
 		freq  float64
 		xdt   float64
 		snr   float64
-		tones [ft8x.NN]int
+		tones [NN]int
 		pass  int
 	}
 
@@ -144,10 +142,10 @@ func TestIterativeDecode(t *testing.T) {
 		resCands, _ := Sync8(ddArr, NMAX, nfa, nfb, syncmin, nfqso, maxcand)
 		t.Logf("Pass %d: sync8 returned %d candidates (ndeep=%d)", ipass, len(resCands), ndeep)
 
-		// ── Convert research candidates to ft8x.CandidateFreq ────────
-		ft8xCands := make([]ft8x.CandidateFreq, len(resCands))
+		// ── Convert research candidates to CandidateFreq ────────
+		ft8xCands := make([]CandidateFreq, len(resCands))
 		for i, c := range resCands {
-			ft8xCands[i] = ft8x.CandidateFreq{
+			ft8xCands[i] = CandidateFreq{
 				Freq:      c.Freq,
 				DT:        c.DT,
 				SyncPower: c.SyncPower,
@@ -165,26 +163,26 @@ func TestIterativeDecode(t *testing.T) {
 		}
 
 		// ── Decode each candidate (ft8_decode.f90 lines 197–238) ─────
-		params := ft8x.DecodeParams{
+		params := DecodeParams{
 			Depth:     ndeep,
 			APEnabled: true,
 			APCQOnly:  true,
 			APWidth:   25.0,
 		}
 
-		ds := ft8x.NewDownsampler()
+		ds := NewDownsampler()
 		passDecodes := 0
 
 		for i, cand := range ft8xCands {
 			newdat := (i == 0) // recompute 192k FFT on first candidate of each pass
-			result, ok := ft8x.DecodeSingle(ddWork, ds, cand.Freq, cand.DT, newdat, params)
+			result, ok := DecodeSingle(ddWork, ds, cand.Freq, cand.DT, newdat, params)
 			if !ok {
 				// Retry high-sync candidates with baseband time scan
 				// (matches existing DecodeIterative behavior).
 				if cand.SyncPower >= 2.0 {
 					altDT := basebandTimeScan(ddWork, ds, cand.Freq)
 					if math.Abs(altDT-cand.DT) > 0.1 {
-						result, ok = ft8x.DecodeSingle(ddWork, ds, cand.Freq, altDT, false, params)
+						result, ok = DecodeSingle(ddWork, ds, cand.Freq, altDT, false, params)
 					}
 				}
 				if !ok {
@@ -211,7 +209,7 @@ func TestIterativeDecode(t *testing.T) {
 
 			// ── Signal subtraction (ft8_decode.f90 line 435) ─────────
 			// FFT-based low-pass filter method matching Fortran subtractft8.
-			ft8x.SubtractFT8FFT(ddWork, result.Tones, result.Freq, result.DT)
+			SubtractFT8FFT(ddWork, result.Tones, result.Freq, result.DT)
 		}
 
 		t.Logf("Pass %d: %d new decodes (total: %d)", ipass, passDecodes, ndecodes)
@@ -257,8 +255,8 @@ func TestIterativeDecode(t *testing.T) {
 
 // basebandTimeScan finds the best time offset for a signal at frequency f0
 // by doing a coarse Sync8d scan over the full NP2 range of the downsampled
-// baseband signal. Mirrors ft8x.basebandTimeScan (unexported in main package).
-func basebandTimeScan(dd []float32, ds *ft8x.Downsampler, f0 float64) float64 {
+// baseband signal. Mirrors basebandTimeScan (unexported in main package).
+func basebandTimeScan(dd []float32, ds *Downsampler, f0 float64) float64 {
 	nd := false
 	cd0 := ds.Downsample(dd, &nd, f0)
 
@@ -269,18 +267,18 @@ func basebandTimeScan(dd []float32, ds *ft8x.Downsampler, f0 float64) float64 {
 
 	smax := 0.0
 	ibest := 0
-	for idt := 0; idt <= ft8x.NP2; idt += 4 {
-		sync := ft8x.Sync8d(cd0, idt, ctwkZero, 0)
+	for idt := 0; idt <= NP2; idt += 4 {
+		sync := Sync8d(cd0, idt, ctwkZero, 0)
 		if sync > smax {
 			smax = sync
 			ibest = idt
 		}
 	}
-	return float64(ibest-1) * ft8x.Dt2
+	return float64(ibest-1) * Dt2
 }
 
 // TestIterativeDecodeVsMainPackage compares the research iterative pipeline
-// against the main ft8x.DecodeIterative to verify we get the same or better
+// against the main DecodeIterative to verify we get the same or better
 // results.
 func TestIterativeDecodeVsMainPackage(t *testing.T) {
 	if testing.Short() {
@@ -301,13 +299,13 @@ func TestIterativeDecodeVsMainPackage(t *testing.T) {
 	ddSlice := make([]float32, NMAX)
 	copy(ddSlice, dd[:])
 
-	params := ft8x.DefaultDecodeParams()
+	params := DefaultDecodeParams()
 	params.Depth = 3
 	params.MaxPasses = 3
 	params.APEnabled = true
 	params.APCQOnly = true
 
-	mainResults := ft8x.DecodeIterative(ddSlice, params, 200, 2600)
+	mainResults := DecodeIterative(ddSlice, params, 200, 2600)
 
 	mainCorrect := 0
 	mainSeen := make(map[string]bool)
@@ -319,7 +317,7 @@ func TestIterativeDecodeVsMainPackage(t *testing.T) {
 		}
 	}
 
-	t.Logf("ft8x.DecodeIterative: %d decodes, %d correct / %d reference",
+	t.Logf("DecodeIterative: %d decodes, %d correct / %d reference",
 		len(mainResults), mainCorrect, len(wsjtxCapture3))
 	for _, r := range mainResults {
 		tag := ""

@@ -13,6 +13,16 @@
 All experimental changes, pipeline improvements, and diagnostic work MUST go
 into the `research/` sub-package (`/home/mveary/Development/go-ft8/research/`).
 
+### The source of truth for the research pipeline is the WSJT-X codebase.
+
+Every change in the research pipeline is a direct port of the corresponding
+WSJT-X code. This ensures that any improvement in the research pipeline is a true algorithmic improvement, not a Go vs Fortran
+precision difference. The research pipeline serves as a proving ground for the
+production pipeline, allowing us to test changes in isolation and only promote those that demonstrably improve decode counts
+across all three captures without regression.
+
+**THE RESEARCH CODEBASE MUST NOT IMPORT FROM PRODUCTION CODE**
+
 ### Why research-only?
 
 Production changes were attempted (2026-04-11) and **all regressed or had

@@ -17,8 +17,6 @@ import (
 	"os"
 	"strings"
 	"testing"
-
-	ft8x "github.com/ColonelBlimp/go-ft8"
 )
 
 func TestRootCauseAnalysis(t *testing.T) {
@@ -77,16 +75,16 @@ func TestRootCauseAnalysis(t *testing.T) {
 	}
 
 	// Decode with production pipeline
-	params := ft8x.DecodeParams{
+	params := DecodeParams{
 		Depth:     3,
 		APEnabled: true,
 		APCQOnly:  true,
 		APWidth:   25.0,
 		MaxPasses: 3,
 	}
-	results := ft8x.DecodeIterative(ddNorm, params, 200, 2600)
+	results := DecodeIterative(ddNorm, params, 200, 2600)
 
-	decoded := make(map[string]ft8x.DecodeCandidate)
+	decoded := make(map[string]DecodeCandidate)
 	for _, r := range results {
 		decoded[strings.TrimSpace(r.Message)] = r
 	}
@@ -160,7 +158,7 @@ func TestRootCauseAnalysis(t *testing.T) {
 	// First, decode and subtract all successful signals to clean the audio
 	ddClean := make([]float32, NMAX)
 	copy(ddClean, ddNorm)
-	cleanResults := ft8x.DecodeIterative(ddClean, params, 200, 2600)
+	cleanResults := DecodeIterative(ddClean, params, 200, 2600)
 	t.Logf("Subtracted %d signals from audio", len(cleanResults))
 	t.Logf("")
 
@@ -175,7 +173,7 @@ func TestRootCauseAnalysis(t *testing.T) {
 		xdt := ref.WsjtDT + 0.5
 
 		// Check on original audio (all signals present)
-		ds := ft8x.NewDownsampler()
+		ds := NewDownsampler()
 		newdat := true
 		cd0 := ds.Downsample(ddNorm, &newdat, ref.Freq)
 
@@ -184,39 +182,39 @@ func TestRootCauseAnalysis(t *testing.T) {
 		for i := range ctwkZero {
 			ctwkZero[i] = complex(1, 0)
 		}
-		i0 := int(math.Round((xdt + 0.5) * ft8x.Fs2))
+		i0 := int(math.Round((xdt + 0.5) * Fs2))
 		smaxNarrow := 0.0
 		ibestNarrow := i0
 		for idt := i0 - 20; idt <= i0+20; idt++ {
-			sync := ft8x.Sync8d(cd0, idt, ctwkZero, 0)
+			sync := Sync8d(cd0, idt, ctwkZero, 0)
 			if sync > smaxNarrow {
 				smaxNarrow = sync
 				ibestNarrow = idt
 			}
 		}
 
-		_, s8 := ft8x.ComputeSymbolSpectra(cd0, ibestNarrow)
-		nsync := ft8x.HardSync(&s8)
+		_, s8 := ComputeSymbolSpectra(cd0, ibestNarrow)
+		nsync := HardSync(&s8)
 
 		// Check on CLEANED audio
-		dsC := ft8x.NewDownsampler()
+		dsC := NewDownsampler()
 		newdat2 := true
 		cd0C := dsC.Downsample(ddClean, &newdat2, ref.Freq)
 		smaxClean := 0.0
 		ibestClean := i0
 		for idt := i0 - 20; idt <= i0+20; idt++ {
-			sync := ft8x.Sync8d(cd0C, idt, ctwkZero, 0)
+			sync := Sync8d(cd0C, idt, ctwkZero, 0)
 			if sync > smaxClean {
 				smaxClean = sync
 				ibestClean = idt
 			}
 		}
 
-		_, s8C := ft8x.ComputeSymbolSpectra(cd0C, ibestClean)
-		nsyncC := ft8x.HardSync(&s8C)
+		_, s8C := ComputeSymbolSpectra(cd0C, ibestClean)
+		nsyncC := HardSync(&s8C)
 
 		// Try decode at full depth
-		deepParams := ft8x.DecodeParams{
+		deepParams := DecodeParams{
 			Depth:     3,
 			APEnabled: true,
 			APCQOnly:  true,
@@ -224,20 +222,20 @@ func TestRootCauseAnalysis(t *testing.T) {
 		}
 
 		// On original audio
-		ds3 := ft8x.NewDownsampler()
-		resultOrig, okOrig := ft8x.DecodeSingle(ddNorm, ds3, ref.Freq, xdt, true, deepParams)
+		ds3 := NewDownsampler()
+		resultOrig, okOrig := DecodeSingle(ddNorm, ds3, ref.Freq, xdt, true, deepParams)
 
 		// On cleaned audio
-		ds4 := ft8x.NewDownsampler()
-		resultClean, okClean := ft8x.DecodeSingle(ddClean, ds4, ref.Freq, xdt, true, deepParams)
+		ds4 := NewDownsampler()
+		resultClean, okClean := DecodeSingle(ddClean, ds4, ref.Freq, xdt, true, deepParams)
 
 		// With broader search on cleaned audio
 		foundBroad := false
 		var broadMsg string
 		for df := -10.0; df <= 10.0; df += 1.0 {
 			for ddt := -0.5; ddt <= 0.5; ddt += 0.1 {
-				ds5 := ft8x.NewDownsampler()
-				r, ok := ft8x.DecodeSingle(ddClean, ds5, ref.Freq+df, xdt+ddt, true, deepParams)
+				ds5 := NewDownsampler()
+				r, ok := DecodeSingle(ddClean, ds5, ref.Freq+df, xdt+ddt, true, deepParams)
 				if ok {
 					foundBroad = true
 					broadMsg = strings.TrimSpace(r.Message)

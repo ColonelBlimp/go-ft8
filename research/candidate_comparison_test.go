@@ -1,6 +1,6 @@
 // candidate_comparison_test.go — Compares research sync8 candidate detection
 // against the 21 WSJT-X reference decodes for capture.wav and against the
-// main ft8x.Sync8FindCandidates output.
+// main Sync8FindCandidates output.
 
 package research
 
@@ -9,8 +9,6 @@ import (
 	"math"
 	"os"
 	"testing"
-
-	ft8x "github.com/ColonelBlimp/go-ft8"
 )
 
 // wsjtxRef lists the 21 WSJT-X reference decodes for capture.wav.
@@ -115,7 +113,7 @@ func TestCandidateComparison(t *testing.T) {
 		resCovered, len(wsjtxRef), 100.0*float64(resCovered)/float64(len(wsjtxRef)))
 
 	// ══════════════════════════════════════════════════════════════════
-	// 2. Main ft8x.Sync8FindCandidates (normalized audio /32768)
+	// 2. Main Sync8FindCandidates (normalized audio /32768)
 	// ══════════════════════════════════════════════════════════════════
 	// The main codebase uses /32768 normalized float32 audio.
 	ddNorm := make([]float32, NMAX)
@@ -123,11 +121,11 @@ func TestCandidateComparison(t *testing.T) {
 		ddNorm[i] = dd[i] / 32768.0
 	}
 
-	ft8xCands := ft8x.Sync8FindCandidates(ddNorm, nfa, nfb, syncmin, nfqso, maxcand)
+	ft8xCands := Sync8FindCandidates(ddNorm, nfa, nfb, syncmin, nfqso, maxcand)
 
 	t.Logf("")
 	t.Logf("═══════════════════════════════════════════════════════")
-	t.Logf("ft8x.Sync8FindCandidates: %d candidates (syncmin=%.1f, %d–%d Hz)", len(ft8xCands), syncmin, nfa, nfb)
+	t.Logf("Sync8FindCandidates: %d candidates (syncmin=%.1f, %d–%d Hz)", len(ft8xCands), syncmin, nfa, nfb)
 	t.Logf("═══════════════════════════════════════════════════════")
 
 	ft8xCovered := 0

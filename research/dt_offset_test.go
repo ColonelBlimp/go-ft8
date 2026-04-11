@@ -14,8 +14,6 @@ import (
 	"os"
 	"strings"
 	"testing"
-
-	ft8x "github.com/ColonelBlimp/go-ft8"
 )
 
 // decodedSignals pairs WSJT-X reference DT with our decoder's DT.
@@ -56,17 +54,17 @@ func TestDTOffset(t *testing.T) {
 	}
 
 	// Decode all signals
-	params := ft8x.DecodeParams{
+	params := DecodeParams{
 		Depth:     3,
 		APEnabled: true,
 		APCQOnly:  true,
 		APWidth:   25.0,
 		MaxPasses: 3,
 	}
-	results := ft8x.DecodeIterative(ddNorm, params, 200, 2600)
+	results := DecodeIterative(ddNorm, params, 200, 2600)
 
 	// Build lookup by message
-	decoded := make(map[string]ft8x.DecodeCandidate)
+	decoded := make(map[string]DecodeCandidate)
 	for _, r := range results {
 		decoded[strings.TrimSpace(r.Message)] = r
 	}
@@ -100,7 +98,7 @@ func TestDTOffset(t *testing.T) {
 		mean := sum / float64(len(offsets))
 		t.Logf("")
 		t.Logf("Mean DT offset: %+.3f seconds", mean)
-		t.Logf("At 200 Hz sample rate: %.1f samples", mean*ft8x.Fs2)
+		t.Logf("At 200 Hz sample rate: %.1f samples", mean*Fs2)
 		t.Logf("")
 		if math.Abs(mean) > 0.1 {
 			t.Logf("⚠ SIGNIFICANT systematic DT offset detected!")
@@ -135,8 +133,8 @@ func TestSubtractionQuality(t *testing.T) {
 
 	// Pick CQ 4S6ARW MJ97 at 938 Hz — it's near CQ CO8LY FL20 at 932 Hz.
 	// Decode it, then measure residual energy.
-	ds := ft8x.NewDownsampler()
-	params := ft8x.DecodeParams{
+	ds := NewDownsampler()
+	params := DecodeParams{
 		Depth:     3,
 		APEnabled: true,
 		APCQOnly:  true,
@@ -145,12 +143,12 @@ func TestSubtractionQuality(t *testing.T) {
 
 	// First, decode 4S6ARW
 	// Use the candidate search to find it
-	candidates := ft8x.Sync8FindCandidates(ddNorm, 200, 2600, 1.3, 0, 600)
-	var target4S6 ft8x.DecodeCandidate
+	candidates := Sync8FindCandidates(ddNorm, 200, 2600, 1.3, 0, 600)
+	var target4S6 DecodeCandidate
 	found := false
 	for i, c := range candidates {
 		newdat := (i == 0)
-		r, ok := ft8x.DecodeSingle(ddNorm, ds, c.Freq, c.DT, newdat, params)
+		r, ok := DecodeSingle(ddNorm, ds, c.Freq, c.DT, newdat, params)
 		if ok && strings.Contains(r.Message, "4S6ARW") {
 			target4S6 = r
 			found = true
@@ -164,7 +162,7 @@ func TestSubtractionQuality(t *testing.T) {
 	t.Logf("Decoded: %s at freq=%.1f DT=%.1f", target4S6.Message, target4S6.Freq, target4S6.DT)
 
 	// Measure energy at 932 Hz BEFORE subtraction
-	ds932 := ft8x.NewDownsampler()
+	ds932 := NewDownsampler()
 	newdat := true
 	cd0Before := ds932.Downsample(ddNorm, &newdat, 932.0)
 	energyBefore := 0.0
@@ -176,9 +174,9 @@ func TestSubtractionQuality(t *testing.T) {
 	// Subtract using per-symbol method
 	ddAfterSimple := make([]float32, NMAX)
 	copy(ddAfterSimple, ddNorm)
-	ft8x.SubtractFT8(ddAfterSimple, target4S6.Tones, target4S6.Freq, target4S6.DT)
+	SubtractFT8(ddAfterSimple, target4S6.Tones, target4S6.Freq, target4S6.DT)
 
-	ds932s := ft8x.NewDownsampler()
+	ds932s := NewDownsampler()
 	newdat = true
 	cd0AfterSimple := ds932s.Downsample(ddAfterSimple, &newdat, 932.0)
 	energyAfterSimple := 0.0
@@ -190,9 +188,9 @@ func TestSubtractionQuality(t *testing.T) {
 	// Subtract using FFT method
 	ddAfterFFT := make([]float32, NMAX)
 	copy(ddAfterFFT, ddNorm)
-	ft8x.SubtractFT8FFT(ddAfterFFT, target4S6.Tones, target4S6.Freq, target4S6.DT)
+	SubtractFT8FFT(ddAfterFFT, target4S6.Tones, target4S6.Freq, target4S6.DT)
 
-	ds932f := ft8x.NewDownsampler()
+	ds932f := NewDownsampler()
 	newdat = true
 	cd0AfterFFT := ds932f.Downsample(ddAfterFFT, &newdat, 932.0)
 	energyAfterFFT := 0.0
@@ -210,7 +208,7 @@ func TestSubtractionQuality(t *testing.T) {
 		energyAfterFFT, 100*energyAfterFFT/energyBefore)
 
 	// Also measure at 938 Hz (the 4S6ARW signal itself)
-	ds938 := ft8x.NewDownsampler()
+	ds938 := NewDownsampler()
 	newdat = true
 	cd0_938Before := ds938.Downsample(ddNorm, &newdat, 938.0)
 	energy938Before := 0.0
@@ -219,7 +217,7 @@ func TestSubtractionQuality(t *testing.T) {
 		energy938Before += r*r + im*im
 	}
 
-	ds938s := ft8x.NewDownsampler()
+	ds938s := NewDownsampler()
 	newdat = true
 	cd0_938AfterS := ds938s.Downsample(ddAfterSimple, &newdat, 938.0)
 	energy938AfterS := 0.0
@@ -228,7 +226,7 @@ func TestSubtractionQuality(t *testing.T) {
 		energy938AfterS += r*r + im*im
 	}
 
-	ds938f := ft8x.NewDownsampler()
+	ds938f := NewDownsampler()
 	newdat = true
 	cd0_938AfterF := ds938f.Downsample(ddAfterFFT, &newdat, 938.0)
 	energy938AfterF := 0.0
@@ -256,10 +254,10 @@ func TestSubtractionQuality(t *testing.T) {
 			ddClean = ddAfterFFT
 		}
 
-		dsC := ft8x.NewDownsampler()
+		dsC := NewDownsampler()
 		for _, f := range []float64{930, 931, 932, 933, 934} {
 			for _, dt := range []float64{0.2, 0.4, 0.6, 0.7, 0.8, 1.0, 1.2} {
-				r, ok := ft8x.DecodeSingle(ddClean, dsC, f, dt, true, params)
+				r, ok := DecodeSingle(ddClean, dsC, f, dt, true, params)
 				if ok && strings.Contains(r.Message, "CO8LY") {
 					t.Logf("  ✓ [%s] Decoded at f=%.0f dt=%.1f: %s snr=%.1f",
 						label, f, dt, strings.TrimSpace(r.Message), r.SNR)

@@ -20,8 +20,6 @@ import (
 	"os"
 	"strings"
 	"testing"
-
-	ft8x "github.com/ColonelBlimp/go-ft8"
 )
 
 // missingRef holds the 5 signals WSJT-X decodes but we don't.
@@ -77,14 +75,14 @@ func TestPipelineTrace(t *testing.T) {
 		xdt := sig.DT - 0.5
 
 		// ── Try DecodeSingle at exact WSJT-X parameters first ──
-		ds := ft8x.NewDownsampler()
-		params := ft8x.DecodeParams{
+		ds := NewDownsampler()
+		params := DecodeParams{
 			Depth:     3,
 			APEnabled: true,
 			APCQOnly:  true,
 			APWidth:   25.0,
 		}
-		result, ok := ft8x.DecodeSingle(ddNorm, ds, sig.Freq, xdt, true, params)
+		result, ok := DecodeSingle(ddNorm, ds, sig.Freq, xdt, true, params)
 		if ok {
 			t.Logf("  ✓ DecodeSingle SUCCESS at exact ref params: %s", strings.TrimSpace(result.Message))
 			continue
@@ -101,8 +99,8 @@ func TestPipelineTrace(t *testing.T) {
 			for ddt := -0.5; ddt <= 0.5; ddt += 0.1 {
 				f := sig.Freq + df
 				xd := xdt + ddt
-				ds2 := ft8x.NewDownsampler()
-				r, ok2 := ft8x.DecodeSingle(ddNorm, ds2, f, xd, true, params)
+				ds2 := NewDownsampler()
+				r, ok2 := DecodeSingle(ddNorm, ds2, f, xd, true, params)
 				if ok2 {
 					bestMsg = strings.TrimSpace(r.Message)
 					bestFreq = f
@@ -121,7 +119,7 @@ func TestPipelineTrace(t *testing.T) {
 		t.Logf("  ── Pipeline stage trace at exact ref ──")
 
 		// Stage 1: Downsample
-		ds3 := ft8x.NewDownsampler()
+		ds3 := NewDownsampler()
 		newdat := true
 		cd0 := ds3.Downsample(ddNorm, &newdat, sig.Freq)
 		t.Logf("  Stage 1 (downsample): cd0 len=%d", len(cd0))
@@ -135,7 +133,7 @@ func TestPipelineTrace(t *testing.T) {
 		t.Logf("    cd0 total energy: %.2e  mean energy/sample: %.2e", energy, energy/float64(len(cd0)))
 
 		// Stage 2: Coarse time search
-		i0 := int(math.Round((xdt + 0.5) * ft8x.Fs2))
+		i0 := int(math.Round((xdt + 0.5) * Fs2))
 		var ctwkZero [32]complex128
 		for i := range ctwkZero {
 			ctwkZero[i] = complex(1, 0)
@@ -144,7 +142,7 @@ func TestPipelineTrace(t *testing.T) {
 		smax := 0.0
 		ibest := i0
 		for idt := i0 - 20; idt <= i0+20; idt++ {
-			sync := ft8x.Sync8d(cd0, idt, ctwkZero, 0)
+			sync := Sync8d(cd0, idt, ctwkZero, 0)
 			if sync > smax {
 				smax = sync
 				ibest = idt
@@ -155,14 +153,14 @@ func TestPipelineTrace(t *testing.T) {
 		// Also scan full range for comparison
 		smaxFull := 0.0
 		ibestFull := 0
-		for idt := 0; idt <= ft8x.NP2; idt += 2 {
-			sync := ft8x.Sync8d(cd0, idt, ctwkZero, 0)
+		for idt := 0; idt <= NP2; idt += 2 {
+			sync := Sync8d(cd0, idt, ctwkZero, 0)
 			if sync > smaxFull {
 				smaxFull = sync
 				ibestFull = idt
 			}
 		}
-		t.Logf("    Full range scan: ibest=%d  smax=%.4f  (xdt=%.3f)", ibestFull, smaxFull, float64(ibestFull-1)*ft8x.Dt2)
+		t.Logf("    Full range scan: ibest=%d  smax=%.4f  (xdt=%.3f)", ibestFull, smaxFull, float64(ibestFull-1)*Dt2)
 
 		// Stage 3: Fine frequency search
 		smax2 := 0.0
@@ -170,14 +168,14 @@ func TestPipelineTrace(t *testing.T) {
 		twopi := 2.0 * math.Pi
 		for ifr := -5; ifr <= 5; ifr++ {
 			delf := float64(ifr) * 0.5
-			dphi := twopi * delf * ft8x.Dt2
+			dphi := twopi * delf * Dt2
 			phi := 0.0
 			var ctwk [32]complex128
 			for i := 0; i < 32; i++ {
 				ctwk[i] = complex(math.Cos(phi), math.Sin(phi))
 				phi = math.Mod(phi+dphi, twopi)
 			}
-			sync := ft8x.Sync8d(cd0, ibest, ctwk, 1)
+			sync := Sync8d(cd0, ibest, ctwk, 1)
 			if sync > smax2 {
 				smax2 = sync
 				delfBest = delf
@@ -188,7 +186,7 @@ func TestPipelineTrace(t *testing.T) {
 		// Stage 4: Apply freq correction and re-downsample
 		var a [5]float64
 		a[0] = -delfBest
-		cd0corr := ft8x.TwkFreq1(cd0, ft8x.Fs2, a)
+		cd0corr := TwkFreq1(cd0, Fs2, a)
 		f1 := sig.Freq + delfBest
 
 		newdat2 := false
@@ -197,7 +195,7 @@ func TestPipelineTrace(t *testing.T) {
 		// Refine time
 		ss := [9]float64{}
 		for idt := -4; idt <= 4; idt++ {
-			sync := ft8x.Sync8d(cd0corr, ibest+idt, ctwkZero, 0)
+			sync := Sync8d(cd0corr, ibest+idt, ctwkZero, 0)
 			ss[idt+4] = sync
 		}
 		bestIdx := 0
@@ -207,19 +205,19 @@ func TestPipelineTrace(t *testing.T) {
 			}
 		}
 		ibest = ibest + (bestIdx - 4)
-		xdtFinal := float64(ibest-1) * ft8x.Dt2
+		xdtFinal := float64(ibest-1) * Dt2
 		t.Logf("  Stage 4 (refine time): ibest=%d  xdt=%.3f", ibest, xdtFinal)
 
 		// Stage 5: Symbol spectra + hard sync
-		cs, s8 := ft8x.ComputeSymbolSpectra(cd0corr, ibest)
-		nsync := ft8x.HardSync(&s8)
+		cs, s8 := ComputeSymbolSpectra(cd0corr, ibest)
+		nsync := HardSync(&s8)
 		t.Logf("  Stage 5 (hard sync): nsync=%d (threshold: >6)", nsync)
 
 		if nsync <= 6 {
 			t.Logf("    ✗ FAILED: hard sync too low (%d ≤ 6) — signal not found in baseband", nsync)
 			// Also try with full-range ibest
-			cs2, s8_2 := ft8x.ComputeSymbolSpectra(cd0corr, ibestFull)
-			nsync2 := ft8x.HardSync(&s8_2)
+			cs2, s8_2 := ComputeSymbolSpectra(cd0corr, ibestFull)
+			nsync2 := HardSync(&s8_2)
 			t.Logf("    Retry with full-range ibest=%d: nsync=%d", ibestFull, nsync2)
 			if nsync2 > 6 {
 				// Use the better position
@@ -236,7 +234,7 @@ func TestPipelineTrace(t *testing.T) {
 
 		// Show per-Costas-array sync breakdown
 		t.Logf("    s8 tone magnitudes for first few data symbols:")
-		for sym := 7; sym < 12 && sym < ft8x.NN; sym++ {
+		for sym := 7; sym < 12 && sym < NN; sym++ {
 			line := "      sym %2d: "
 			for tone := 0; tone < 8; tone++ {
 				line += " %6.3f"
@@ -247,7 +245,7 @@ func TestPipelineTrace(t *testing.T) {
 		}
 
 		// Stage 6: Soft metrics + LDPC
-		bmeta, bmetb, bmetc, bmetd := ft8x.ComputeSoftMetrics(&cs)
+		bmeta, bmetb, bmetc, bmetd := ComputeSoftMetrics(&cs)
 
 		// Stats on LLRs
 		for label, bmet := range map[string][174]float64{
@@ -276,7 +274,7 @@ func TestPipelineTrace(t *testing.T) {
 		// Try each LLR pass
 		apmag := 0.0
 		for _, v := range bmeta {
-			av := math.Abs(v * ft8x.ScaleFac)
+			av := math.Abs(v * ScaleFac)
 			if av > apmag {
 				apmag = av
 			}
@@ -285,18 +283,18 @@ func TestPipelineTrace(t *testing.T) {
 
 		for ipass, bmet := range [][174]float64{bmeta, bmetb, bmetc, bmetd} {
 			names := []string{"bmeta", "bmetb", "bmetc", "bmetd"}
-			var llrz [ft8x.LDPCn]float64
-			var apmask [ft8x.LDPCn]int8
+			var llrz [LDPCn]float64
+			var apmask [LDPCn]int8
 			for i, v := range bmet {
-				llrz[i] = ft8x.ScaleFac * v
+				llrz[i] = ScaleFac * v
 			}
 
-			res, ok := ft8x.Decode174_91(llrz, ft8x.LDPCk, 2, 2, apmask)
+			res, ok := Decode174_91(llrz, LDPCk, 2, 2, apmask)
 			if ok {
 				var msg77 [77]int8
 				copy(msg77[:], res.Message91[:77])
-				c77 := ft8x.BitsToC77(msg77)
-				msg, unpackOK := ft8x.Unpack77(c77)
+				c77 := BitsToC77(msg77)
+				msg, unpackOK := Unpack77(c77)
 				t.Logf("    pass %d (%s): DECODE OK  nhard=%d  msg=%q  unpack=%v",
 					ipass, names[ipass], res.NHardErrors, strings.TrimSpace(msg), unpackOK)
 			} else {
@@ -307,20 +305,20 @@ func TestPipelineTrace(t *testing.T) {
 		// Also try with AP (CQ)
 		for ipass, bmet := range [][174]float64{bmeta, bmetb, bmetc, bmetd} {
 			names := []string{"bmeta+AP", "bmetb+AP", "bmetc+AP", "bmetd+AP"}
-			var llrz [ft8x.LDPCn]float64
-			var apmask [ft8x.LDPCn]int8
+			var llrz [LDPCn]float64
+			var apmask [LDPCn]int8
 			for i, v := range bmet {
-				llrz[i] = ft8x.ScaleFac * v
+				llrz[i] = ScaleFac * v
 			}
 			// Apply AP type 1 (CQ)
-			ft8x.ApplyAP(&llrz, &apmask, 1, [58]int{}, apmag)
+			ApplyAP(&llrz, &apmask, 1, [58]int{}, apmag)
 
-			res, ok := ft8x.Decode174_91(llrz, ft8x.LDPCk, 2, 2, apmask)
+			res, ok := Decode174_91(llrz, LDPCk, 2, 2, apmask)
 			if ok {
 				var msg77 [77]int8
 				copy(msg77[:], res.Message91[:77])
-				c77 := ft8x.BitsToC77(msg77)
-				msg, unpackOK := ft8x.Unpack77(c77)
+				c77 := BitsToC77(msg77)
+				msg, unpackOK := Unpack77(c77)
 				if strings.Contains(strings.TrimSpace(msg), "CQ") || !unpackOK {
 					t.Logf("    pass %d (%s): DECODE OK  nhard=%d  msg=%q  unpack=%v",
 						ipass+4, names[ipass], res.NHardErrors, strings.TrimSpace(msg), unpackOK)
@@ -359,14 +357,14 @@ func TestPipelineTraceWithSubtraction(t *testing.T) {
 	}
 
 	// ── First, decode all the signals we CAN decode and subtract them ──
-	params := ft8x.DecodeParams{
+	params := DecodeParams{
 		Depth:     3,
 		APEnabled: true,
 		APCQOnly:  true,
 		APWidth:   25.0,
 		MaxPasses: 3,
 	}
-	results := ft8x.DecodeIterative(ddWork, params, 200, 2600)
+	results := DecodeIterative(ddWork, params, 200, 2600)
 	t.Logf("Pre-subtraction: decoded %d signals", len(results))
 	for _, r := range results {
 		t.Logf("  subtracted: %7.1f Hz  dt=%+.1f  %s", r.Freq, r.DT, strings.TrimSpace(r.Message))
@@ -385,14 +383,14 @@ func TestPipelineTraceWithSubtraction(t *testing.T) {
 		xdt := sig.DT - 0.5
 
 		// Try at exact params
-		ds := ft8x.NewDownsampler()
-		deepParams := ft8x.DecodeParams{
+		ds := NewDownsampler()
+		deepParams := DecodeParams{
 			Depth:     3,
 			APEnabled: true,
 			APCQOnly:  true,
 			APWidth:   25.0,
 		}
-		result, ok := ft8x.DecodeSingle(ddWork, ds, sig.Freq, xdt, true, deepParams)
+		result, ok := DecodeSingle(ddWork, ds, sig.Freq, xdt, true, deepParams)
 		if ok {
 			t.Logf("  ✓ DECODED on cleaned audio: %s  snr=%.1f", strings.TrimSpace(result.Message), result.SNR)
 			continue
@@ -409,38 +407,38 @@ func TestPipelineTraceWithSubtraction(t *testing.T) {
 		}
 		smaxFull := 0.0
 		ibestFull := 0
-		for idt := 0; idt <= ft8x.NP2; idt++ {
-			sync := ft8x.Sync8d(cd0, idt, ctwkZero, 0)
+		for idt := 0; idt <= NP2; idt++ {
+			sync := Sync8d(cd0, idt, ctwkZero, 0)
 			if sync > smaxFull {
 				smaxFull = sync
 				ibestFull = idt
 			}
 		}
-		t.Logf("  Full sync scan: ibest=%d  sync=%.4f  (xdt=%.3f)", ibestFull, smaxFull, float64(ibestFull-1)*ft8x.Dt2)
+		t.Logf("  Full sync scan: ibest=%d  sync=%.4f  (xdt=%.3f)", ibestFull, smaxFull, float64(ibestFull-1)*Dt2)
 
 		// Compare to expected i0
-		i0 := int(math.Round((xdt + 0.5) * ft8x.Fs2))
-		syncAtRef := ft8x.Sync8d(cd0, i0, ctwkZero, 0)
+		i0 := int(math.Round((xdt + 0.5) * Fs2))
+		syncAtRef := Sync8d(cd0, i0, ctwkZero, 0)
 		t.Logf("  Sync at ref i0=%d: %.4f", i0, syncAtRef)
 
 		// Try decode at full-range best
-		result2, ok2 := ft8x.DecodeSingle(ddWork, ds, sig.Freq, float64(ibestFull-1)*ft8x.Dt2, false, deepParams)
+		result2, ok2 := DecodeSingle(ddWork, ds, sig.Freq, float64(ibestFull-1)*Dt2, false, deepParams)
 		if ok2 {
 			t.Logf("  ✓ DECODED with full-range sync: %s", strings.TrimSpace(result2.Message))
 			continue
 		}
 
 		// Hard sync check
-		_, s8 := ft8x.ComputeSymbolSpectra(cd0, ibestFull)
-		nsync := ft8x.HardSync(&s8)
+		_, s8 := ComputeSymbolSpectra(cd0, ibestFull)
+		nsync := HardSync(&s8)
 		t.Logf("  HardSync at ibest=%d: nsync=%d", ibestFull, nsync)
 
 		// Try wider freq search: ±20 Hz
 		t.Logf("  ── Wide freq search ±20 Hz on cleaned audio ──")
 		for df := -20.0; df <= 20.0; df += 2.0 {
 			f := sig.Freq + df
-			ds4 := ft8x.NewDownsampler()
-			r, ok4 := ft8x.DecodeSingle(ddWork, ds4, f, xdt, true, deepParams)
+			ds4 := NewDownsampler()
+			r, ok4 := DecodeSingle(ddWork, ds4, f, xdt, true, deepParams)
 			if ok4 {
 				t.Logf("  ✓ Found at freq=%.1f (df=%+.1f): %s snr=%.1f",
 					f, df, strings.TrimSpace(r.Message), r.SNR)
@@ -508,7 +506,7 @@ func TestLDPCMarginAnalysis(t *testing.T) {
 			tag = "  ✗"
 		}
 
-		ds := ft8x.NewDownsampler()
+		ds := NewDownsampler()
 		newdat := true
 		cd0 := ds.Downsample(ddNorm, &newdat, sig.Freq)
 
@@ -517,11 +515,11 @@ func TestLDPCMarginAnalysis(t *testing.T) {
 		for i := range ctwkZero {
 			ctwkZero[i] = complex(1, 0)
 		}
-		i0 := int(math.Round((xdt + 0.5) * ft8x.Fs2))
+		i0 := int(math.Round((xdt + 0.5) * Fs2))
 		smax := 0.0
 		ibest := i0
 		for idt := i0 - 20; idt <= i0+20; idt++ {
-			sync := ft8x.Sync8d(cd0, idt, ctwkZero, 0)
+			sync := Sync8d(cd0, idt, ctwkZero, 0)
 			if sync > smax {
 				smax = sync
 				ibest = idt
@@ -534,14 +532,14 @@ func TestLDPCMarginAnalysis(t *testing.T) {
 		twopi := 2.0 * math.Pi
 		for ifr := -5; ifr <= 5; ifr++ {
 			delf := float64(ifr) * 0.5
-			dphi := twopi * delf * ft8x.Dt2
+			dphi := twopi * delf * Dt2
 			phi := 0.0
 			var ctwk [32]complex128
 			for i := 0; i < 32; i++ {
 				ctwk[i] = complex(math.Cos(phi), math.Sin(phi))
 				phi = math.Mod(phi+dphi, twopi)
 			}
-			sync := ft8x.Sync8d(cd0, ibest, ctwk, 1)
+			sync := Sync8d(cd0, ibest, ctwk, 1)
 			if sync > smax2 {
 				smax2 = sync
 				delfBest = delf
@@ -554,15 +552,15 @@ func TestLDPCMarginAnalysis(t *testing.T) {
 		cd0 = ds.Downsample(ddNorm, &newdat2, f1)
 
 		// Symbol spectra
-		cs, s8 := ft8x.ComputeSymbolSpectra(cd0, ibest)
-		nsync := ft8x.HardSync(&s8)
+		cs, s8 := ComputeSymbolSpectra(cd0, ibest)
+		nsync := HardSync(&s8)
 
-		bmeta, _, _, _ := ft8x.ComputeSoftMetrics(&cs)
+		bmeta, _, _, _ := ComputeSoftMetrics(&cs)
 
 		// LLR quality metric: how confident are the LLRs?
-		var llrz [ft8x.LDPCn]float64
+		var llrz [LDPCn]float64
 		for i, v := range bmeta {
-			llrz[i] = ft8x.ScaleFac * v
+			llrz[i] = ScaleFac * v
 		}
 
 		// Compute a "LLR confidence" = mean(|llr|) — higher means cleaner signal
@@ -574,11 +572,11 @@ func TestLDPCMarginAnalysis(t *testing.T) {
 				sumAbs += v
 			}
 		}
-		meanLLR := sumAbs / float64(ft8x.LDPCn)
+		meanLLR := sumAbs / float64(LDPCn)
 
 		// Try decode to get nhard or failure
-		var apmask [ft8x.LDPCn]int8
-		res, decOK := ft8x.Decode174_91(llrz, ft8x.LDPCk, 2, 2, apmask)
+		var apmask [LDPCn]int8
+		res, decOK := Decode174_91(llrz, LDPCk, 2, 2, apmask)
 		nhard := -1
 		if decOK {
 			nhard = res.NHardErrors
@@ -586,16 +584,16 @@ func TestLDPCMarginAnalysis(t *testing.T) {
 
 		// Count initial syndrome weight (how far from valid codeword)
 		syndW := 0
-		var cw [ft8x.LDPCn]int8
-		for i := 0; i < ft8x.LDPCn; i++ {
+		var cw [LDPCn]int8
+		for i := 0; i < LDPCn; i++ {
 			if llrz[i] > 0 {
 				cw[i] = 1
 			}
 		}
-		for j := 0; j < ft8x.LDPCm; j++ {
+		for j := 0; j < LDPCm; j++ {
 			s := 0
-			for i := 0; i < ft8x.LDPCNrw[j]; i++ {
-				s += int(cw[ft8x.LDPCNm[j][i]-1])
+			for i := 0; i < LDPCNrw[j]; i++ {
+				s += int(cw[LDPCNm[j][i]-1])
 			}
 			if s%2 != 0 {
 				syndW++

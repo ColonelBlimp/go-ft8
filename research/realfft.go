@@ -24,8 +24,6 @@ package research
 
 import (
 	"math"
-
-	ft8x "github.com/ColonelBlimp/go-ft8"
 )
 
 // realFFTTwiddles stores pre-computed twiddle factors for the RealFFT unpack
@@ -75,8 +73,8 @@ func RealFFT(x []float32, n int) []complex128 {
 	}
 
 	// ── Step 2: N/2-point complex FFT ────────────────────────────────
-	// ft8x.FFT routes to mixed-radix for 5-smooth sizes (1920 = 2⁷×3×5).
-	Z := ft8x.FFT(z)
+	// FFT routes to mixed-radix for 5-smooth sizes (1920 = 2⁷×3×5).
+	Z := FFT(z)
 
 	// ── Step 3: Unpack to N/2+1 real-FFT outputs ────────────────────
 	//

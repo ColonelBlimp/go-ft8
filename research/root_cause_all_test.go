@@ -11,7 +11,7 @@
 //   dt_miss        — Sync8 returns wrong DT; correct DT does decode
 //
 // This test does NOT modify production code. It uses the research pipeline
-// (research sync8 + ft8x.DecodeSingle + SubtractFT8FFT) to diagnose.
+// (research sync8 + DecodeSingle + SubtractFT8FFT) to diagnose.
 
 package research
 
@@ -21,8 +21,6 @@ import (
 	"os"
 	"strings"
 	"testing"
-
-	ft8x "github.com/ColonelBlimp/go-ft8"
 )
 
 // refSignal describes a single WSJT-X reference decode.
@@ -162,7 +160,7 @@ func analyseCapture(t *testing.T, cap captureSpec) {
 		freq  float64
 		xdt   float64
 		snr   float64
-		tones [ft8x.NN]int
+		tones [NN]int
 		pass  int
 	}
 
@@ -193,9 +191,9 @@ func analyseCapture(t *testing.T, cap captureSpec) {
 		copy(ddArr[:], ddWork)
 		resCands, _ := Sync8(ddArr, NMAX, nfa, nfb, syncmin, nfqso, maxcand)
 
-		ft8xCands := make([]ft8x.CandidateFreq, len(resCands))
+		ft8xCands := make([]CandidateFreq, len(resCands))
 		for i, c := range resCands {
-			ft8xCands[i] = ft8x.CandidateFreq{
+			ft8xCands[i] = CandidateFreq{
 				Freq:      c.Freq,
 				DT:        c.DT,
 				SyncPower: c.SyncPower,
@@ -209,24 +207,24 @@ func analyseCapture(t *testing.T, cap captureSpec) {
 			ft8xCands = ft8xCands[:candLimit]
 		}
 
-		params := ft8x.DecodeParams{
+		params := DecodeParams{
 			Depth:     ndeep,
 			APEnabled: true,
 			APCQOnly:  true,
 			APWidth:   25.0,
 		}
 
-		ds := ft8x.NewDownsampler()
+		ds := NewDownsampler()
 		passDecodes := 0
 
 		for i, cand := range ft8xCands {
 			newdat := (i == 0)
-			result, ok := ft8x.DecodeSingle(ddWork, ds, cand.Freq, cand.DT, newdat, params)
+			result, ok := DecodeSingle(ddWork, ds, cand.Freq, cand.DT, newdat, params)
 			if !ok {
 				if cand.SyncPower >= 2.0 {
 					altDT := basebandTimeScan(ddWork, ds, cand.Freq)
 					if math.Abs(altDT-cand.DT) > 0.1 {
-						result, ok = ft8x.DecodeSingle(ddWork, ds, cand.Freq, altDT, false, params)
+						result, ok = DecodeSingle(ddWork, ds, cand.Freq, altDT, false, params)
 					}
 				}
 				if !ok {
@@ -247,7 +245,7 @@ func analyseCapture(t *testing.T, cap captureSpec) {
 				snr: result.SNR, tones: result.Tones, pass: ipass,
 			})
 
-			ft8x.SubtractFT8FFT(ddWork, result.Tones, result.Freq, result.DT)
+			SubtractFT8FFT(ddWork, result.Tones, result.Freq, result.DT)
 		}
 		t.Logf("Pass %d: %d new decodes (total: %d, ndeep=%d, cands=%d)",
 			ipass, passDecodes, ndecodes, ndeep, len(ft8xCands))
@@ -321,49 +319,49 @@ func analyseCapture(t *testing.T, cap captureSpec) {
 		t.Logf("── %s (%.0f Hz, ft8b_xdt=%.2f, CQ=%v) ──", ref.Label, ref.Freq, ref.Ft8bDT, ref.IsCQ)
 
 		// ── Check 1: sync quality at exact params on ORIGINAL audio ──
-		dsOrig := ft8x.NewDownsampler()
+		dsOrig := NewDownsampler()
 		newdat := true
 		cd0 := dsOrig.Downsample(ddNorm, &newdat, ref.Freq)
 
-		i0 := int(math.Round((ref.Ft8bDT + 0.5) * ft8x.Fs2))
+		i0 := int(math.Round((ref.Ft8bDT + 0.5) * Fs2))
 		smaxOrig := 0.0
 		ibestOrig := i0
 		for idt := i0 - 20; idt <= i0+20; idt++ {
-			sync := ft8x.Sync8d(cd0, idt, ctwkZero, 0)
+			sync := Sync8d(cd0, idt, ctwkZero, 0)
 			if sync > smaxOrig {
 				smaxOrig = sync
 				ibestOrig = idt
 			}
 		}
-		_, s8Orig := ft8x.ComputeSymbolSpectra(cd0, ibestOrig)
-		nsyncOrig := ft8x.HardSync(&s8Orig)
+		_, s8Orig := ComputeSymbolSpectra(cd0, ibestOrig)
+		nsyncOrig := HardSync(&s8Orig)
 
 		// ── Check 2: sync quality on CLEANED audio ──
-		dsClean := ft8x.NewDownsampler()
+		dsClean := NewDownsampler()
 		newdat2 := true
 		cd0C := dsClean.Downsample(ddClean, &newdat2, ref.Freq)
 
 		smaxClean := 0.0
 		ibestClean := i0
 		for idt := i0 - 20; idt <= i0+20; idt++ {
-			sync := ft8x.Sync8d(cd0C, idt, ctwkZero, 0)
+			sync := Sync8d(cd0C, idt, ctwkZero, 0)
 			if sync > smaxClean {
 				smaxClean = sync
 				ibestClean = idt
 			}
 		}
-		_, s8Clean := ft8x.ComputeSymbolSpectra(cd0C, ibestClean)
-		nsyncClean := ft8x.HardSync(&s8Clean)
+		_, s8Clean := ComputeSymbolSpectra(cd0C, ibestClean)
+		nsyncClean := HardSync(&s8Clean)
 
 		// ── Check 3: DecodeSingle at exact params (original) ──
-		dsD1 := ft8x.NewDownsampler()
-		_, okOrig := ft8x.DecodeSingle(ddNorm, dsD1, ref.Freq, ref.Ft8bDT, true, ft8x.DecodeParams{
+		dsD1 := NewDownsampler()
+		_, okOrig := DecodeSingle(ddNorm, dsD1, ref.Freq, ref.Ft8bDT, true, DecodeParams{
 			Depth: 3, APEnabled: true, APCQOnly: true, APWidth: 25.0,
 		})
 
 		// ── Check 4: DecodeSingle at exact params (cleaned) ──
-		dsD2 := ft8x.NewDownsampler()
-		resultClean, okClean := ft8x.DecodeSingle(ddClean, dsD2, ref.Freq, ref.Ft8bDT, true, ft8x.DecodeParams{
+		dsD2 := NewDownsampler()
+		resultClean, okClean := DecodeSingle(ddClean, dsD2, ref.Freq, ref.Ft8bDT, true, DecodeParams{
 			Depth: 3, APEnabled: true, APCQOnly: true, APWidth: 25.0,
 		})
 
@@ -374,8 +372,8 @@ func analyseCapture(t *testing.T, cap captureSpec) {
 		broadDT := 0.0
 		for df := -10.0; df <= 10.0; df += 1.0 {
 			for ddt := -0.5; ddt <= 0.5; ddt += 0.1 {
-				dsB := ft8x.NewDownsampler()
-				r, ok := ft8x.DecodeSingle(ddClean, dsB, ref.Freq+df, ref.Ft8bDT+ddt, true, ft8x.DecodeParams{
+				dsB := NewDownsampler()
+				r, ok := DecodeSingle(ddClean, dsB, ref.Freq+df, ref.Ft8bDT+ddt, true, DecodeParams{
 					Depth: 3, APEnabled: true, APCQOnly: true, APWidth: 25.0,
 				})
 				if ok {

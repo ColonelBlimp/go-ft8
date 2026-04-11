@@ -16,8 +16,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	ft8x "github.com/ColonelBlimp/go-ft8"
 )
 
 func TestIterativeDecodeTiming(t *testing.T) {
@@ -92,16 +90,16 @@ func TestIterativeDecodeTiming(t *testing.T) {
 			resCands = resCands[:candLimit]
 		}
 
-		ft8xCands := make([]ft8x.CandidateFreq, len(resCands))
+		ft8xCands := make([]CandidateFreq, len(resCands))
 		for i, c := range resCands {
-			ft8xCands[i] = ft8x.CandidateFreq{
+			ft8xCands[i] = CandidateFreq{
 				Freq:      c.Freq,
 				DT:        c.DT,
 				SyncPower: c.SyncPower,
 			}
 		}
 
-		params := ft8x.DecodeParams{
+		params := DecodeParams{
 			Depth:     ndeep,
 			APEnabled: true,
 			APCQOnly:  true,
@@ -110,7 +108,7 @@ func TestIterativeDecodeTiming(t *testing.T) {
 
 		// ── Time: decode loop ────────────────────────────────────────
 		decodeStart := time.Now()
-		ds := ft8x.NewDownsampler()
+		ds := NewDownsampler()
 		passDecodes := 0
 		candsTried := 0
 		candsDecoded := 0
@@ -122,12 +120,12 @@ func TestIterativeDecodeTiming(t *testing.T) {
 		for i, cand := range ft8xCands {
 			candStart := time.Now()
 			newdat := (i == 0)
-			result, ok := ft8x.DecodeSingle(ddWork, ds, cand.Freq, cand.DT, newdat, params)
+			result, ok := DecodeSingle(ddWork, ds, cand.Freq, cand.DT, newdat, params)
 			if !ok {
 				if cand.SyncPower >= 2.0 {
 					altDT := basebandTimeScan(ddWork, ds, cand.Freq)
 					if math.Abs(altDT-cand.DT) > 0.1 {
-						result, ok = ft8x.DecodeSingle(ddWork, ds, cand.Freq, altDT, false, params)
+						result, ok = DecodeSingle(ddWork, ds, cand.Freq, altDT, false, params)
 					}
 				}
 			}
@@ -149,7 +147,7 @@ func TestIterativeDecodeTiming(t *testing.T) {
 			passDecodes++
 			candsDecoded++
 
-			ft8x.SubtractFT8(ddWork, result.Tones, result.Freq, result.DT)
+			SubtractFT8(ddWork, result.Tones, result.Freq, result.DT)
 		}
 		decodeDur := time.Since(decodeStart)
 		passDur := time.Since(passStart)
