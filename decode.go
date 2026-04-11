@@ -598,8 +598,12 @@ func DecodeIterative(audio []float32, params DecodeParams, freqMin, freqMax floa
 	for pass := 0; pass < maxPasses; pass++ {
 		// ── Candidate detection on current (cleaned) audio ──────────
 		// Lower threshold on later passes since subtraction reduces the
-		// noise floor, matching WSJT-X behaviour.
+		// noise floor and reveals weaker signals.  The LDPC decoder is a
+		// strong discriminator, so extra false candidates just fail to decode.
 		syncmin := 1.3
+		if pass >= 1 {
+			syncmin = 1.1
+		}
 		candidates := Sync8FindCandidates(dd, int(freqMin), int(freqMax), syncmin, 0, 600)
 
 		// ── Decode each candidate ──────────────────────────────────
@@ -630,9 +634,9 @@ func DecodeIterative(audio []float32, params DecodeParams, freqMin, freqMax floa
 			newdat := (i == 0) // 192k FFT once per pass
 			result, ok := DecodeSingle(dd, ds, cand.Freq, cand.DT, newdat, passParams)
 			if !ok {
-				// Retry high-sync candidates with a baseband coarse time scan.
+				// Retry candidates with a baseband coarse time scan.
 				// sync8 may have found the right frequency but wrong DT.
-				if cand.SyncPower >= 2.0 {
+				if cand.SyncPower >= 1.5 {
 					altDT := basebandTimeScan(dd, ds, cand.Freq)
 					if math.Abs(altDT-cand.DT) > 0.1 {
 						result, ok = DecodeSingle(dd, ds, cand.Freq, altDT, false, passParams)
