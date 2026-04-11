@@ -61,8 +61,8 @@
    - **OSD depth alignment** (`decode.go`) — Corrected `DecodeSingle` to match Fortran `ft8b.f90` line 405: `norder=2` is hardcoded regardless of `ndepth`, so `ndeepD2=2` and `ndeepD3=2` are both order-1 with npre1 pre-test. The Fortran `ndepth` parameter only controls `maxosd` (how many OSD calls), not the OSD search order.
 
    - **Research sub-package** (`research/`, ~3,600 lines) — Experimental code for investigating sync8 improvements, pipeline diagnostics, and root cause analysis of missing signals:
-     - `sync8.go` (598 lines) — Complete research sync8 implementation faithfully porting WSJT-X `sync8.f90`. Uses scaffolded functions matching each Fortran step: `computeSpectrogram`, `computeSync2D`, `findPeaks`, `normalizeByPercentile`, `extractPreCandidates`, `suppressDuplicates`, `finalSort`. Operates on raw int16 audio (Fortran convention, no /32768 normalisation).
-     - `realfft.go` / `realfft_test.go` (102 + 187 lines) — Optimized real-to-complex FFT using the "pack and unpack" trick (N/2-point complex FFT instead of full N-point). Validated against `ft8x.RealFFT` to <1e-6 relative error. Benchmarked at ~2× speedup for the 3840-point spectrogram FFT.
+     - `sync8.go` (611 lines) — Complete research sync8 implementation faithfully porting WSJT-X `sync8.f90`. Uses scaffolded functions matching each Fortran step: `computeSpectrogram`, `computeSync2D`, `findPeaks`, `normalizeByPercentile`, `extractPreCandidates`, `suppressDuplicates`, `finalSort`. Operates on raw int16 audio (Fortran convention, no /32768 normalisation). Optimizations: `computeSync2D` pre-computes `sCos[7]` and `sNoise[7]` row slice pointers per frequency bin (hoisted outside the 125-lag inner loop), `extractPreCandidates` and `finalSort` pre-allocate slice capacity.
+     - `realfft.go` / `realfft_test.go` (140 + 187 lines) — Optimized real-to-complex FFT using the "pack and unpack" trick (N/2-point complex FFT instead of full N-point). Pre-computed twiddle factor table (`[960]complex128` at package init) with half-cycle symmetry eliminates all `math.Cos`/`math.Sin` calls in the unpack loop for the NFFT1=3840 spectrogram path. Benchmarked: ~9% faster unpack loop (536 µs vs 587 µs per FFT), ~2× total speedup over `ft8x.RealFFT`. Validated against `ft8x.RealFFT` to <1e-6 relative error.
      - `params.go` (42 lines) — FT8 constants duplicated from `ft8x` to keep research self-contained. Matches `ft8_params.f90` exactly.
      - `iwave_test.go` (355 lines) — WAV loader (`loadIwave`) replicating WSJT-X `ft8d.f90` exact binary read: skips 44-byte header, reads int16 samples, converts to unscaled float32 (no /32768). Validates dd/ddNorm scaling factor is exactly 32768. Verifies that all decode-critical paths are scale-invariant.
      - `candidate_comparison_test.go` (214 lines) — Side-by-side comparison of research sync8 vs production `ft8x.Sync8FindCandidates` against all 21 WSJT-X reference signals from capture.wav. Measures coverage (within ±10 Hz, ±0.5s tolerance) and shows top-20 candidates from each.
@@ -126,8 +126,8 @@ Full test suite (WAV, 3 caps):   ~39 s
 
 | File | Lines | Purpose |
 |---|---|---|
-| `sync8.go` | 598 | Complete research sync8 port (spectrogram, sync2d, peak finding, normalization, candidates) |
-| `realfft.go` | 102 | Optimized N/2-point real FFT with pack/unpack |
+| `sync8.go` | 611 | Complete research sync8 port (spectrogram, sync2d, peak finding, normalization, candidates). Inner-loop index caching: pre-computed row pointers for Costas and noise rows per freq bin. Pre-allocated candidate slices. |
+| `realfft.go` | 140 | Optimized N/2-point real FFT with pack/unpack. Pre-computed twiddle table (`[960]complex128`) with half-cycle symmetry for the NFFT1=3840 hot-path. |
 | `realfft_test.go` | 187 | RealFFT validation, capture test, and performance benchmark |
 | `params.go` | 42 | Duplicated FT8 constants |
 | `iwave_test.go` | 355 | WAV loader (Fortran-matching), iwave/ddNorm scaling verification |
@@ -229,6 +229,7 @@ Capture 3 missing (5 signals): `5Z4VJ YB1RUS OI33`, `UA0LW UA4ARH -15`, `CQ CO8L
     - **Subtraction quality**: Both `SubtractFT8` and `SubtractFT8FFT` reduce signal energy at the target frequency. Residual energy at nearby frequencies is from other signals, not subtraction artifacts.
     - **Root cause of missing signals**: The 5 missing signals from capture.wav (16→21 gap) fail due to (a) insufficient AP — most are non-CQ messages requiring AP types 2–6 with callsign knowledge, and (b) weak signal levels at the LDPC threshold edge. The pipeline is numerically correct.
     - **Research sync8**: Complete port of sync8.f90 with optimized RealFFT (~2× speedup). Coverage matches production sync8 on capture.wav reference signals.
+    - **Performance optimization evaluation**: Three proposed sync8 micro-optimizations were evaluated: (1) Pre-computed twiddle table in RealFFT — ~9% per-FFT improvement, modest but zero-risk (implemented). (2) Inner-loop index caching in `computeSync2D` — pre-computed row pointers eliminate redundant index arithmetic across 125 lag iterations (implemented). (3) `suppressDuplicates` O(n²) bucketing — rejected: only ~200 candidates in practice (not 1000), runs in <0.1ms, bucketing adds complexity for no measurable gain. (4) Spectrogram/sync2d over-allocation trim — rejected: spectrogram writes all 1920 FFT bins (can't shrink without coupling stages), sync2d savings ~0.14 MB (trivial), untouched pages likely uncommitted by OS anyway. The dominant cost remains the 372 mixed-radix FFTs per spectrogram (~200ms total), not the twiddle/index arithmetic.
     - **Timing**: Per-candidate decode takes ~1–10 ms depending on OSD depth. Full 3-pass pipeline on capture.wav runs within the 15s real-time budget.
 
 ---
