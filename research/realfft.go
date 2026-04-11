@@ -48,14 +48,14 @@ func init() {
 
 // RealFFT computes the forward FFT of a real-valued signal.
 //
-// x contains the real samples (may be shorter than n; missing values are
+// x contains the real samples (maybe shorter than n; missing values are
 // treated as zero).  n must be even.
 //
 // Returns n/2+1 complex values representing the positive-frequency half
 // of the spectrum (the negative half is the complex conjugate mirror).
 //
-// The output matches ft8x.RealFFT exactly — same DFT definition,
-// same unnormalized convention — but runs in roughly half the time.
+// The output matches ft8x.RealFFT exactly — the same DFT definition,
+// the same unnormalized convention — but runs in roughly half the time.
 func RealFFT(x []float32, n int) []complex128 {
 	half := n / 2
 	lx := len(x)
