@@ -113,8 +113,10 @@ func DecodeSingle(
 ) (DecodeCandidate, bool) {
 	const (
 		maxOSD  = 2
-		ndeepD2 = 2 // Depth 2: order-1 with npre1
-		ndeepD3 = 4 // Depth 3: order-2 with npre1 + npre2
+		ndeepD2 = 2 // Depth 2: order-1 with npre1 (matches Fortran norder=2)
+		ndeepD3 = 2 // Depth 3: same OSD depth — Fortran ft8b.f90 line 405 hardcodes norder=2
+		// The Fortran ndepth parameter only controls maxosd (how many OSD calls),
+		// NOT the OSD search order.  norder=2 → OSD ndeep=2 → nord=1, npre1=1.
 	)
 
 	// ── Step 1: downconvert and downsample ────────────────────────────────
