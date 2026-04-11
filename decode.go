@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"strings"
+	"sync"
 )
 
 // DecodeParams holds tunable parameters for the FT8 decoder.
@@ -415,6 +416,160 @@ func SubtractFT8(dd []float32, itone [NN]int, f0, xdt float64) {
 				cr, ci := real(cref[i]), imag(cref[i])
 				dd[j] -= float32(2.0 * (real(camp)*cr - imag(camp)*ci))
 			}
+		}
+	}
+}
+
+// subtractFT8State holds the pre-computed frequency-domain filter window
+// for FFT-based signal subtraction. Matches the Fortran's `save` variables.
+type subtractFT8State struct {
+	cw            []complex128 // frequency-domain filter window (NMAX points)
+	endCorrection []float64    // end-correction factors (NFILT/2+1 points)
+}
+
+var (
+	subOnce  sync.Once
+	subState subtractFT8State
+)
+
+const subNFILT = 4000 // filter width in samples (~333 ms at 12000 Hz)
+
+// initSubtractState computes the frequency-domain low-pass filter window
+// and end correction factors. Called once, matching Fortran's first-call init.
+//
+// Port of subtractft8.f90 lines 25–42.
+func initSubtractState() {
+	pi := math.Pi
+	nfft := NMAX
+
+	// Build cos² window: window(j) = cos(pi*j/NFILT)^2 for j=-NFILT/2..+NFILT/2
+	halfFilt := subNFILT / 2
+	window := make([]float64, subNFILT+1) // indices 0..NFILT map to j=-halfFilt..+halfFilt
+	sumw := 0.0
+	for idx := 0; idx <= subNFILT; idx++ {
+		j := idx - halfFilt
+		c := math.Cos(pi * float64(j) / float64(subNFILT))
+		window[idx] = c * c
+		sumw += window[idx]
+	}
+
+	// cw(1:NFILT+1) = window/sumw; rest = 0
+	// Then cshift by NFILT/2+1 to center the filter
+	cw := make([]complex128, nfft)
+	for idx := 0; idx <= subNFILT; idx++ {
+		cw[idx] = complex(window[idx]/sumw, 0)
+	}
+	// Circular shift left by halfFilt+1
+	shift := halfFilt + 1
+	shifted := make([]complex128, nfft)
+	for i := 0; i < nfft; i++ {
+		shifted[i] = cw[(i+shift)%nfft]
+	}
+
+	// Forward FFT of the window kernel.
+	// NOTE: Fortran scales by 1/nfft here because its inverse FFT is unnormalized.
+	// Go's IFFT already normalizes by 1/N, so we do NOT scale here.
+	shifted = FFT(shifted)
+
+	// End correction factors
+	endCorr := make([]float64, halfFilt+1)
+	for j := 0; j <= halfFilt; j++ {
+		// sum(window(j-1:NFILT/2)) → sum of window[idx] for idx=(j-1+halfFilt)..(NFILT)
+		// but j here is 1-based in Fortran: endcorrection(j) for j=1..NFILT/2+1
+		// maps to 0-based j=0..halfFilt
+		// Fortran: sum(window(j-1:NFILT/2)) where window is -NFILT/2..+NFILT/2
+		// j=1 (Fortran) → window(0:NFILT/2) = window[halfFilt..NFILT]
+		// j=k (Fortran) → window(k-1:NFILT/2) = window[halfFilt+k-1..NFILT]
+		// In Go 0-based: j=0 → sum window[halfFilt..NFILT], j=k → sum window[halfFilt+k..NFILT]
+		s := 0.0
+		startIdx := halfFilt + j // maps Fortran window(j:NFILT/2) where j is 0-based Fortran j-1
+		for idx := startIdx; idx <= subNFILT; idx++ {
+			s += window[idx]
+		}
+		denom := 1.0 - s/sumw
+		if denom > 0 {
+			endCorr[j] = 1.0 / denom
+		} else {
+			endCorr[j] = 1.0
+		}
+	}
+
+	subState = subtractFT8State{
+		cw:            shifted,
+		endCorrection: endCorr,
+	}
+}
+
+// SubtractFT8FFT removes a decoded signal from the audio buffer in-place
+// using the FFT-based low-pass filter method from WSJT-X.
+//
+// This is a faithful port of subroutine subtractft8 from
+// wsjt-wsjtx/lib/ft8/subtractft8.f90 (lrefinedt=.false. path).
+//
+// The algorithm:
+//  1. Generate GFSK complex reference waveform cref
+//  2. Conjugate-multiply: camp(i) = dd(j) × conj(cref(i))
+//  3. Low-pass filter in frequency domain: FFT → multiply by window → IFFT
+//  4. Apply end correction for filter transients
+//  5. Subtract: dd(j) -= 2 × Re(cfilt(i) × cref(i))
+//
+// This produces a much cleaner subtraction than per-symbol averaging because
+// the frequency-domain filter smoothly tracks amplitude/phase variations.
+func SubtractFT8FFT(dd []float32, itone [NN]int, f0, xdt float64) {
+	subOnce.Do(initSubtractState)
+
+	nfft := NMAX
+	halfFilt := subNFILT / 2
+
+	// 1. Generate complex reference waveform
+	cref := GenFT8CWave(itone, f0)
+
+	// 2. Conjugate multiply: camp(i) = dd(nstart+i-1) * conj(cref(i))
+	// Fortran: nstart = dt*12000 + 1 (1-based), Go: nstart = xdt*12000 (0-based)
+	nstart := int(xdt * Fs)
+
+	camp := make([]complex128, nfft)
+	for i := 0; i < NFRAME; i++ {
+		j := nstart + i
+		if j >= 0 && j < len(dd) {
+			dv := float64(dd[j])
+			cr, ci := real(cref[i]), imag(cref[i])
+			camp[i] = complex(dv*cr+0*ci, -dv*ci+0*cr) // dd[j] * conj(cref[i])
+		}
+	}
+
+	// 3. FFT-based low-pass filter
+	// cfilt = camp (zero-padded to nfft already)
+	cfilt := FFT(camp)
+
+	// Multiply by window in frequency domain
+	for i := 0; i < nfft; i++ {
+		cfilt[i] *= subState.cw[i]
+	}
+
+	// Inverse FFT
+	cfilt = IFFT(cfilt)
+
+	// 4. End correction: boost the filter output at the start and end
+	// of the frame to compensate for the filter transient.
+	// Fortran: cfilt(1:NFILT/2+1) *= endcorrection(1:NFILT/2+1)
+	for j := 0; j <= halfFilt && j < NFRAME; j++ {
+		cfilt[j] *= complex(subState.endCorrection[j], 0)
+	}
+	// Fortran: cfilt(nframe:nframe-NFILT/2:-1) *= endcorrection(1:NFILT/2+1)
+	for j := 0; j <= halfFilt; j++ {
+		idx := NFRAME - 1 - j
+		if idx >= 0 {
+			cfilt[idx] *= complex(subState.endCorrection[j], 0)
+		}
+	}
+
+	// 5. Subtract: dd(j) -= 2 * real(cfilt(i) * cref(i))
+	for i := 0; i < NFRAME; i++ {
+		j := nstart + i
+		if j >= 0 && j < len(dd) {
+			z := cfilt[i] * cref[i]
+			dd[j] -= float32(2.0 * real(z))
 		}
 	}
 }

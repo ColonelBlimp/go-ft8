@@ -210,8 +210,8 @@ func TestIterativeDecode(t *testing.T) {
 			})
 
 			// ── Signal subtraction (ft8_decode.f90 line 435) ─────────
-			// ft8b subtracts in-place: call subtractft8(dd0,itone,f1,xdt,.false.)
-			ft8x.SubtractFT8(ddWork, result.Tones, result.Freq, result.DT)
+			// FFT-based low-pass filter method matching Fortran subtractft8.
+			ft8x.SubtractFT8FFT(ddWork, result.Tones, result.Freq, result.DT)
 		}
 
 		t.Logf("Pass %d: %d new decodes (total: %d)", ipass, passDecodes, ndecodes)
