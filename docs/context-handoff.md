@@ -3,7 +3,7 @@
 **Date:** 2026-04-11
 **Module:** `github.com/ColonelBlimp/go-ft8`
 **Go version:** 1.25
-**Total code:** ~7,100 lines across 24 Go files (+ ~3,600 lines in `research/`)
+**Total code:** ~7,100 lines across 24 Go files (+ ~4,200 lines in `research/`)
 
 ---
 
@@ -13,15 +13,16 @@
 All experimental changes, pipeline improvements, and diagnostic work MUST go
 into the `research/` sub-package (`/home/mveary/Development/go-ft8/research/`).
 
-### The source of truth for the research pipeline is the WSJT-X codebase.
+### The source of truth is the WSJT-X Fortran codebase ONLY.
 
-Every change in the research pipeline is a direct port of the corresponding
-WSJT-X code. This ensures that any improvement in the research pipeline is a true algorithmic improvement, not a Go vs Fortran
-precision difference. The research pipeline serves as a proving ground for the
-production pipeline, allowing us to test changes in isolation and only promote those that demonstrably improve decode counts
-across all three captures without regression.
+Every function in the research pipeline is ported directly from the corresponding
+WSJT-X Fortran source at `~/Development/wsjt-wsjtx/`. **Do NOT read or reference
+the production Go code** when porting — the Fortran is the sole authority. This
+ensures any difference we find is a real algorithmic gap, not a Go vs Fortran
+precision artefact inherited from the production code.
 
-**THE RESEARCH CODEBASE MUST NOT IMPORT FROM PRODUCTION CODE**
+**THE RESEARCH PACKAGE MUST NOT IMPORT PRODUCTION CODE** (except via thin stubs
+during the porting transition — see "Fortran porting progress" below).
 
 ### Why research-only?
 
@@ -37,18 +38,50 @@ zero net benefit**:
 
 **All production changes were reverted. `decode.go` has zero diff from git HEAD.**
 
-The research package lets us progressively test changes in isolation, pinpoint
-exactly where and why the Go decode count is lower than WSJT-X (C++/Fortran),
-and only promote proven improvements to production once they demonstrably help
-across all three captures without regression.
-
 ### Research workflow
 
-1. Make changes in `research/` (sync8, pipeline, metrics, LDPC, etc.)
+1. Port each function from Fortran into `research/` stubs (one at a time, verify with tests)
 2. Run `TestRootCauseAllCaptures` to measure impact across all 3 captures
-3. Run `TestResearchIterativeDecode*` to compare research vs production pipeline
-4. Only when a change improves decodes without regression across all captures,
-   port it to production `ft8x` and update regression baselines
+3. Once the full pipeline is ported and matching/exceeding production, promote to production
+
+---
+
+## Fortran porting progress
+
+The research package is being systematically decoupled from production `ft8x`.
+Each stub file either contains a **direct Fortran port** (✅) or a **thin
+delegation to production** (`// TODO: port from Fortran`) that will be replaced.
+
+The porting order follows the call chain bottom-up, so each piece can be
+verified in isolation before composing:
+
+| # | File | Functions | Fortran source | Status |
+|---|---|---|---|---|
+| 1 | `sync_d.go` | `Sync8d()`, `HardSync()` | `sync8d.f90`, `ft8b.f90:163–176` | ✅ Ported |
+| 2 | `metrics.go` | `ComputeSymbolSpectra()`, `ComputeSoftMetrics()`, `normalizeBmet()`, `fft32()` | `ft8b.f90:154–233, 466–479` | ✅ Ported |
+| 3 | `downsample.go` | `Downsampler`, `TwkFreq1()` | `ft8_downsample.f90`, `twkfreq1.f90` | TODO |
+| 4 | `ldpc.go` | `Decode174_91()` (BP + OSD) | `decode174_91.f90`, `osd174_91.f90` | TODO |
+| 5 | `ldpc_parity.go` | `LDPCMn`, `LDPCNm`, `LDPCNrw` | `ldpc_174_91_c_parity.f90` | TODO |
+| 6 | `message.go` | `Unpack77()`, `BitsToC77()` | `packjt77.f90` | TODO |
+| 7 | `ap.go` | `ApplyAP()` | `ft8b.f90:243–401` | TODO |
+| 8 | `encode.go` | `GenFT8Tones()`, `GenFT8CWave()` | `gen_ft8.f90` | TODO |
+| 9 | `subtract.go` | `SubtractFT8()`, `SubtractFT8FFT()` | `subtractft8.f90` | TODO |
+| 10 | `decode.go` | `DecodeSingle()`, `DecodeIterative()`, `Sync8FindCandidates()` | `ft8b.f90`, `ft8_decode.f90`, `sync8.f90` | TODO |
+| 11 | `fft.go` | `FFT()`, `IFFT()` | `four2a.f90` | TODO (delegates to production) |
+| 12 | `realfft.go` | `RealFFT()` | N/A (optimized N/2-point trick) | ✅ Already local (uses local `FFT()`) |
+
+### Key porting notes
+
+- **`fft32()`** — A self-contained 32-point radix-2 FFT was written in `metrics.go`
+  specifically for the symbol spectra computation (matching `four2a(csymb,32,1,-1,1)`).
+  This avoids depending on the general-purpose FFT router for the hot inner loop.
+
+- **`fft.go`** delegates `FFT()`/`IFFT()` to production for now. These route to
+  mixed-radix for 5-smooth sizes. Will be ported last since the FFT implementation
+  is well-tested and unlikely to be the source of decode differences.
+
+- **Test files** (`*_test.go`) have been updated to call local research functions
+  instead of `ft8x.*`. No test file imports production code.
 
 ---
 
@@ -131,7 +164,7 @@ Full test suite (WAV, 3 caps):   ~39 s
 
 Run via: `go test -v -run "TestRootCauseAllCaptures" ./research/`
 
-**Research pipeline decode counts** (using research sync8 + ft8x.DecodeSingle + SubtractFT8FFT):
+**Research pipeline decode counts** (using research sync8 + research stubs → ft8x delegation):
 
 | Capture | Research pipeline | Production iterative | WSJT-X reference |
 |---|---|---|---|
@@ -189,80 +222,78 @@ numerically correct — the gap is NOT a Go vs Fortran precision issue.
 ### Research file inventory (ACTIVE DEVELOPMENT)
 
 All research files are in `research/` (`/home/mveary/Development/go-ft8/research/`).
-The research package imports production `ft8x` for comparison but is otherwise
-self-contained.
+The research package is being decoupled from production `ft8x` — all test files
+now call local functions; stub files delegate to production only until ported.
+
+**Ported from Fortran (self-contained, no production dependency):**
+
+| File | Lines | Fortran source | Purpose |
+|---|---|---|---|
+| `sync_d.go` | 170 | `sync8d.f90`, `ft8b.f90:163–176` | `Sync8d()` — Costas correlation; `HardSync()` — nsync count |
+| `metrics.go` | 260 | `ft8b.f90:154–233, 466–479` | `ComputeSymbolSpectra()` — 32-pt FFT per symbol; `ComputeSoftMetrics()` — 4-pass LLR extraction; `normalizeBmet()`; `fft32()` |
+| `sync8.go` | 611 | `sync8.f90` | Research sync8 with optimized inner loops |
+| `realfft.go` | 138 | N/A | Optimized N/2-point real FFT (uses local `FFT()`) |
+| `params.go` | 42 | `ft8_params.f90` | Base FT8 constants (Fs, NSPS, NN, NMAX, etc.) |
+| `constants.go` | 53 | `ft8_params.f90` | Derived constants (NP2, Fs2, Dt2, ScaleFac, LDPC params, GrayMap) |
+
+**Stub files (delegate to production, TODO port from Fortran):**
+
+| File | Lines | Fortran source | Functions stubbed |
+|---|---|---|---|
+| `downsample.go` | 37 | `ft8_downsample.f90`, `twkfreq1.f90` | `Downsampler`, `NewDownsampler()`, `TwkFreq1()` |
+| `ldpc.go` | 25 | `decode174_91.f90`, `osd174_91.f90` | `Decode174_91()` |
+| `ldpc_parity.go` | 21 | `ldpc_174_91_c_parity.f90` | `LDPCMn`, `LDPCNm`, `LDPCNrw` |
+| `message.go` | 28 | `packjt77.f90` | `Unpack77()`, `BitsToC77()` |
+| `ap.go` | 21 | `ft8b.f90:243–401` | `ApplyAP()` |
+| `encode.go` | 29 | `gen_ft8.f90` | `GenFT8Tones()`, `GenFT8CWave()` |
+| `subtract.go` | 32 | `subtractft8.f90` | `SubtractFT8()`, `SubtractFT8FFT()` |
+| `decode.go` | 66 | `ft8b.f90`, `ft8_decode.f90`, `sync8.f90` | `DecodeSingle()`, `DecodeIterative()`, `Sync8FindCandidates()` |
+| `fft.go` | 32 | `four2a.f90` | `FFT()`, `IFFT()` |
+
+**Test and diagnostic files:**
 
 | File | Lines | Purpose |
 |---|---|---|
-| `sync8.go` | 611 | Complete research sync8 port with optimized inner loops. Pre-computed row pointers (`sCos[7]`, `sNoise[7]`) per freq bin. Pre-allocated candidate slices. |
-| `realfft.go` | 140 | Optimized N/2-point real FFT with pack/unpack. Pre-computed twiddle table (`[960]complex128`) with half-cycle symmetry for NFFT1=3840 hot-path. |
 | `realfft_test.go` | 187 | RealFFT validation, capture test, and performance benchmark |
-| `params.go` | 42 | Duplicated FT8 constants (keeps research self-contained) |
-| `iwave_test.go` | 355 | WAV loader (`loadIwave`) replicating WSJT-X exact binary read. Validates dd/ddNorm scaling. |
+| `iwave_test.go` | 355 | WAV loader (`loadIwave`) replicating WSJT-X exact binary read |
 | `candidate_comparison_test.go` | 214 | Research sync8 vs production sync8 coverage comparison |
-| `iterative_decode_test.go` | 334 | Research multi-pass decode pipeline (3 passes, SubtractFT8FFT, basebandTimeScan) |
+| `iterative_decode_test.go` | 334 | Research multi-pass decode pipeline |
 | `missing_signals_test.go` | 146 | Sync2d analysis of uncovered WSJT-X signals |
-| `pipeline_trace_test.go` | 609 | Per-stage pipeline trace + LDPC margin analysis for missing signals |
-| `dt_offset_test.go` | 271 | DT offset quantification + subtraction quality measurement |
+| `pipeline_trace_test.go` | 609 | Per-stage pipeline trace + LDPC margin analysis |
+| `dt_offset_test.go` | 271 | DT offset quantification + subtraction quality |
 | `synth_dt_test.go` | 216 | Synthetic signal timing + downsampler pulse verification |
-| `root_cause_test.go` | 303 | Root cause analysis — AP limitation, weak signal classification (capture.wav only) |
-| `root_cause_all_test.go` | 466 | Root cause analysis for ALL 3 captures — comprehensive failure mode classification |
-| `timing_test.go` | 214 | Per-pass/per-candidate timing, real-time budget check |
+| `root_cause_test.go` | 303 | Root cause analysis (capture.wav only) |
+| `root_cause_all_test.go` | 466 | Root cause analysis for ALL 3 captures |
+| `timing_test.go` | 214 | Per-pass/per-candidate timing |
 | `twid_bench_test.go` | — | Twiddle factor benchmark |
 
 ---
 
 ## What to do next
 
-### All work in `research/` package — progressive testing methodology
+### Continue porting stubs from Fortran (in dependency order)
 
-The goal is to close the gap between our Go decoder and the WSJT-X Fortran/C++ reference
-by making incremental, measurable changes in the research pipeline. Each change must be
-validated with `TestRootCauseAllCaptures` before considering a production port.
+The immediate task is to continue replacing stub delegations with direct Fortran
+ports, working up the call chain:
 
-**Current research pipeline baseline** (from `TestRootCauseAllCaptures`):
+1. ~~`sync_d.go` — `Sync8d`, `HardSync`~~ ✅
+2. ~~`metrics.go` — `ComputeSymbolSpectra`, `ComputeSoftMetrics`~~ ✅
+3. **`downsample.go`** — `Downsampler`, `TwkFreq1()` ← NEXT
+4. **`ldpc.go`** — `Decode174_91()` (BP + OSD)
+5. **`message.go`** — `Unpack77()`, `BitsToC77()`
+6. **`ap.go`** — `ApplyAP()`
+7. **`encode.go`** — `GenFT8Tones()`, `GenFT8CWave()`
+8. **`subtract.go`** — `SubtractFT8()`, `SubtractFT8FFT()`
+9. **`decode.go`** — `DecodeSingle()`, `DecodeIterative()`
 
-| Capture | Research | Production | WSJT-X | Research gap |
-|---|---|---|---|---|
-| Cap 1 | 7/13 | 8/13 | 13/13 | −1 vs production |
-| Cap 2 | 10/17 | 11/17 | 17/17 | −1 vs production |
-| Cap 3 | 16/21 | 16/21 | 21/21 | 0 vs production |
+Once all stubs are ported, the research package will be **fully self-contained**
+with zero production imports, and every line traceable to the Fortran source.
+At that point we can:
+- Run all 3 captures and compare decode counts
+- Trace any remaining differences to specific Fortran lines
+- Make targeted improvements with measurable impact
 
-**Priority 0: Get research pipeline to match production** (currently −1 on Caps 1 & 2)
-
-Before making improvements, the research pipeline must at least match production's
-decode count. The gap is in candidate generation / ordering — investigate why production
-Sync8FindCandidates + DecodeIterative recovers 1 extra signal per capture that the
-research pipeline misses.
-
-**Priority 1: Address `subtraction_needed` (2 signals, Cap2)**
-
-- `UY7VV KE6SU DM14` (553 Hz, sync=9.5, nsync=10, decode=true on original)
-- `CQ TN8GD JI75` (451 Hz, sync=15.2, nsync=10, decode=true on original)
-
-These decode at exact WSJT-X params on original audio — the research Sync8 must be
-producing candidates that are too far from the correct freq/DT. Investigate:
-- Check if Sync8 produces a candidate within ±5 Hz and ±0.2s of the correct position
-- If not, check if the near-dupe suppression or candidate limit (300) is removing them
-- Try wider DT search in DecodeSingle (±20 steps instead of ±10)
-
-**Priority 2: Address `ldpc_fail` signals (5 signals, Cap2)**
-
-These have good sync (nsync 8–14) but LDPC can't converge. Investigate in research:
-- Compare LLR values at the bit level with what WSJT-X's ft8b produces
-- Test if ScaleFac re-tuning (2.5–3.2) helps any of these signals decode
-- Test conditional nsync gate relaxation (≤4 instead of ≤6 on AP passes)
-- Consider adding AP type 2 with a hypothetical MyCall to measure the AP benefit
-
-**Priority 3: Address `sync_fail` edge cases (10 signals)**
-
-Most have nsync 2–6 even on cleaned audio at exact params. WSJT-X decodes these
-via interactive QSO-progress AP (types 2–6, 32–77 known bits). Investigate:
-- Audit HardSync vs Fortran for systematic nsync differences
-- Compare 32-point FFT output ordering between Go fftRadix2 and Fortran four2a
-- Test with synthetic signals at known SNR to find the nsync vs SNR curve
-
-**Phase 1 success criteria (from assessment §5.5)**
+### Phase 1 success criteria (from assessment §5.5)
 
 | Metric | Current | Target |
 |---|---|---|
@@ -309,7 +340,13 @@ via interactive QSO-progress AP (types 2–6, 32–77 known bits). Investigate:
     - All passes: `basebandTimeScan` retry for `SyncPower ≥ 2.0` candidates that fail on first attempt
     - Early termination when a pass produces no new decodes
 
-15. **Research sub-package relationship** — `research/` imports production `ft8x` for `DecodeSingle`, `Downsampler`, `SubtractFT8FFT`, etc. It has its own `Sync8`, `RealFFT`, `params.go`, and `loadIwave` WAV loader. The research iterative pipeline in `root_cause_all_test.go` uses research Sync8 for candidates but production `ft8x.DecodeSingle` for actual decoding. This allows isolating candidate-generation improvements from decode improvements.
+15. **Research package decoupled from production** — As of 2026-04-11, all research
+    test files call local functions only (no `ft8x.*` imports in test code). The
+    research library files use thin stubs that delegate to production where not yet
+    ported. Two functions are fully ported from Fortran: `Sync8d`/`HardSync`
+    (`sync_d.go`) and `ComputeSymbolSpectra`/`ComputeSoftMetrics` (`metrics.go`).
+    The remaining stubs will be replaced one at a time, each verified by existing
+    tests before moving to the next.
 
 ---
 
@@ -317,7 +354,7 @@ via interactive QSO-progress AP (types 2–6, 32–77 known bits). Investigate:
 
 | Path | Language | Use for |
 |---|---|---|
-| `~/Development/wsjt-wsjtx/` | Fortran | Gold standard — `lib/ft8/ft8b.f90`, `sync8.f90`, `decode174_91.f90`, `subtractft8.f90` |
-| `~/Development/ft8_lib/` | C | Clean LDPC reference — `ft8/decode.c`, `ft8/encode.c` |
+| `~/Development/wsjt-wsjtx/` | Fortran | **SOLE SOURCE OF TRUTH** — `lib/ft8/ft8b.f90`, `sync8.f90`, `sync8d.f90`, `ft8_downsample.f90`, `decode174_91.f90`, `osd174_91.f90`, `subtractft8.f90`, `twkfreq1.f90` |
+| `~/Development/ft8_lib/` | C | Secondary reference — `ft8/decode.c`, `ft8/encode.c` |
 | `~/Development/jtdx/` | Fortran | WSJT-X fork with OSD/AP optimisations |
-| `~/Development/goft8/ft8/` | Go | The original ft8x baseline these files were copied from |
+| `~/Development/goft8/ft8/` | Go | The original ft8x baseline (historical only — do NOT use as reference) |
