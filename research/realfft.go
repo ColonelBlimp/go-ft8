@@ -28,6 +28,24 @@ import (
 	ft8x "github.com/ColonelBlimp/go-ft8"
 )
 
+// realFFTTwiddles stores pre-computed twiddle factors for the RealFFT unpack
+// stage when n == NFFT1 (the only size used in the spectrogram hot-path).
+//
+// twid[k] = exp(−j·2π·k/NFFT1) for k = 0..NFFT1/4−1.
+//
+// Twiddles for the upper half of the loop (k = NFFT1/4+1 .. NFFT1/2−1)
+// are derived via half-cycle symmetry:  W^(half−k) = −conj(W^k).
+// The midpoint k = NFFT1/4 is the constant −j.
+var realFFTTwiddles [NFFT1 / 4]complex128 // [960]complex128
+
+func init() {
+	const n = NFFT1 // 3840
+	for k := range realFFTTwiddles {
+		angle := -2.0 * math.Pi * float64(k) / float64(n)
+		realFFTTwiddles[k] = complex(math.Cos(angle), math.Sin(angle))
+	}
+}
+
 // RealFFT computes the forward FFT of a real-valued signal.
 //
 // x contains the real samples (may be shorter than n; missing values are
@@ -77,6 +95,15 @@ func RealFFT(x []float32, n int) []complex128 {
 	out[half] = complex(real(Z[0])-imag(Z[0]), 0)
 
 	// General case: k = 1 .. N/2−1
+	//
+	// For n == NFFT1 (the spectrogram hot-path), twiddle factors are read
+	// from the pre-computed realFFTTwiddles table using half-cycle symmetry:
+	//   k < quarter:  tw = twid[k]
+	//   k == quarter: tw = −j
+	//   k > quarter:  tw = −conj(twid[half−k])
+	quarter := half / 2
+	useTable := n == NFFT1
+
 	for k := 1; k < half; k++ {
 		A := Z[k]               // Z[k]
 		B := conj128(Z[half-k]) // Z*[N/2−k]
@@ -86,8 +113,19 @@ func RealFFT(x []float32, n int) []complex128 {
 		diff := A - B
 		xo := complex(imag(diff), -real(diff)) * complex(0.5, 0) // odd part
 
-		angle := -2.0 * math.Pi * float64(k) / float64(n)
-		tw := complex(math.Cos(angle), math.Sin(angle)) // twiddle W_N^k
+		var tw complex128
+		if useTable {
+			if k < quarter {
+				tw = realFFTTwiddles[k]
+			} else if k == quarter {
+				tw = complex(0, -1) // exp(−jπ/2) = −j
+			} else {
+				tw = -conj128(realFFTTwiddles[half-k])
+			}
+		} else {
+			angle := -2.0 * math.Pi * float64(k) / float64(n)
+			tw = complex(math.Cos(angle), math.Sin(angle))
+		}
 
 		out[k] = xe + tw*xo
 	}

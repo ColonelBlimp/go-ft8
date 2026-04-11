@@ -222,6 +222,17 @@ func computeSync2D(spec *Spectrogram, nfa, nfb int, df float64, nssy, nfos, jstr
 
 	// sync8.f90 lines 54–85: double loop over freq bins and time lags.
 	for i := iaFreq; i <= ibFreq; i++ {
+		// Pre-compute row pointers for this freq bin, hoisted out of the
+		// j loop.  sCos[n] = s[i + nfos*Icos7[n]] (Costas tone rows),
+		// sNoise[k] = s[i + nfos*k] (noise-sum rows).  Eliminates
+		// redundant index arithmetic across 125 lag × 7 tone iterations.
+		var sCos [7][]float64
+		var sNoise [7][]float64
+		for n := 0; n < 7; n++ {
+			sCos[n] = s[i+nfos*Icos7[n]]
+			sNoise[n] = s[i+nfos*n]
+		}
+
 		for j := -jz; j <= jz; j++ {
 			var ta, tb, tc float64
 			var t0a, t0b, t0c float64
@@ -233,10 +244,9 @@ func computeSync2D(spec *Spectrogram, nfa, nfb int, df float64, nssy, nfos, jstr
 				// ── Array a: first Costas (symbols 0–6) ──────────
 				// sync8.f90 lines 64–67
 				if m >= 1 && m <= NHSYM {
-					ta += s[i+nfos*Icos7[n]][m]
-					// sum(s(i:i+nfos*6:nfos, m)) = s[i][m] + s[i+2][m] + ... + s[i+12][m]
+					ta += sCos[n][m]
 					for k := 0; k <= 6; k++ {
-						t0a += s[i+nfos*k][m]
+						t0a += sNoise[k][m]
 					}
 				}
 
@@ -244,9 +254,9 @@ func computeSync2D(spec *Spectrogram, nfa, nfb int, df float64, nssy, nfos, jstr
 				// sync8.f90 lines 68–69 (no bounds check in Fortran)
 				mb := m + nssy*36
 				if mb >= 1 && mb <= NHSYM {
-					tb += s[i+nfos*Icos7[n]][mb]
+					tb += sCos[n][mb]
 					for k := 0; k <= 6; k++ {
-						t0b += s[i+nfos*k][mb]
+						t0b += sNoise[k][mb]
 					}
 				}
 
@@ -254,9 +264,9 @@ func computeSync2D(spec *Spectrogram, nfa, nfb int, df float64, nssy, nfos, jstr
 				// sync8.f90 lines 70–73
 				mc := m + nssy*72
 				if mc >= 1 && mc <= NHSYM {
-					tc += s[i+nfos*Icos7[n]][mc]
+					tc += sCos[n][mc]
 					for k := 0; k <= 6; k++ {
-						t0c += s[i+nfos*k][mc]
+						t0c += sNoise[k][mc]
 					}
 				}
 			}
@@ -471,7 +481,7 @@ func extractPreCandidates(red, red2 []float64, jpeak, jpeak2 []int, indx []int, 
 	}
 
 	iz := len(indx)
-	var cands []Candidate
+	cands := make([]Candidate, 0, maxPreCand)
 
 	// sync8.f90 lines 117–134:
 	// Walk indx in reverse (descending red order: strongest first).
@@ -569,6 +579,9 @@ func finalSort(cands []Candidate, syncmin float64, nfqso, maxcand int) []Candida
 	})
 
 	var out []Candidate
+	if maxcand > 0 {
+		out = make([]Candidate, 0, maxcand)
+	}
 
 	// sync8.f90 lines 156–162: place candidates within ±10 Hz of nfqso first.
 	for i := 0; i < len(cands); i++ {
