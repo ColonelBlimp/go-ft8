@@ -73,10 +73,10 @@ func Sync8(dd [NMAX]float32, npts int, nfa, nfb int, syncmin float64, nfqso int,
 	jpeak, red, jpeak2, red2 := findPeaks(sync2d, nfa, nfb, df)
 
 	// ── Step 4: 40th-percentile normalization (sync8.f90 lines 99–116)
-	normalizeByPercentile(red, red2, nfa, nfb, df)
+	indx := normalizeByPercentile(red, red2, nfa, nfb, df)
 
 	// ── Step 5: Extract pre-candidates (sync8.f90 lines 117–134) ─────
-	preCands := extractPreCandidates(red, red2, jpeak, jpeak2, nfa, nfb, df, tstep, syncmin)
+	preCands := extractPreCandidates(red, red2, jpeak, jpeak2, indx, nfa, nfb, df, tstep, syncmin)
 
 	// ── Step 6: Near-dupe suppression (sync8.f90 lines 137–149) ──────
 	suppressDuplicates(preCands)
@@ -368,7 +368,7 @@ func findPeaks(sync2d [][]float64, nfa, nfb int, df float64) (jpeak []int, red [
 // Sort red and red2, find the 40th percentile value as baseline,
 // divide all values by it.  This normalizes so that syncmin thresholds
 // are relative to the noise floor.
-func normalizeByPercentile(red, red2 []float64, nfa, nfb int, df float64) {
+func normalizeByPercentile(red, red2 []float64, nfa, nfb int, df float64) []int {
 	// sync8.f90 lines 46–47: frequency bin bounds
 	ia := int(math.Round(float64(nfa) / df))
 	if ia < 1 {
@@ -382,14 +382,14 @@ func normalizeByPercentile(red, red2 []float64, nfa, nfb int, df float64) {
 	// sync8.f90 line 99: iz = ib - ia + 1
 	iz := ib - ia + 1
 	if iz < 1 {
-		return
+		return nil
 	}
 
 	// sync8.f90 line 101: npctile = nint(0.40 * iz)
 	npctile := int(math.Round(0.40 * float64(iz)))
 	if npctile < 1 {
 		// sync8.f90 lines 102–104: bail out
-		return
+		return nil
 	}
 
 	// ── Normalize red ────────────────────────────────────────────────
@@ -433,6 +433,8 @@ func normalizeByPercentile(red, red2 []float64, nfa, nfb int, df float64) {
 			red2[i] /= base2
 		}
 	}
+
+	return indx
 }
 
 // indexx returns indices that sort arr[ia..ib] in ascending order.
@@ -463,9 +465,62 @@ func indexx(arr []float64, ia, ib int) []int {
 // For each bin where red[n] >= syncmin: emit candidate from narrow peak.
 // If wide peak differs from narrow: emit second candidate from wide peak.
 // Up to MAXPRECAND=1000 pre-candidates.
-func extractPreCandidates(red, red2 []float64, jpeak, jpeak2 []int, nfa, nfb int, df, tstep, syncmin float64) []Candidate {
-	// TODO: port pre-candidate extraction
-	return nil
+func extractPreCandidates(red, red2 []float64, jpeak, jpeak2 []int, indx []int, nfa, nfb int, df, tstep, syncmin float64) []Candidate {
+	if indx == nil {
+		return nil
+	}
+
+	iz := len(indx)
+	var cands []Candidate
+
+	// sync8.f90 lines 117–134:
+	// Walk indx in reverse (descending red order: strongest first).
+	//   n = ia + indx(iz+1-i) - 1   →  in Go: indx[iz-i] (already absolute)
+	limit := maxPreCand
+	if iz < limit {
+		limit = iz
+	}
+
+	for i := 1; i <= limit; i++ {
+		if len(cands) >= maxPreCand {
+			break
+		}
+
+		// sync8.f90 line 118: n = ia + indx(iz+1-i) - 1
+		// Our indx already stores absolute indices, and iz+1-i maps to
+		// Go's indx[iz-i] (descending order).
+		n := indx[iz-i]
+
+		// sync8.f90 lines 120–124: emit narrow-peak candidate if red >= syncmin
+		if n >= 0 && n < len(red) && red[n] >= syncmin && !math.IsNaN(red[n]) {
+			cands = append(cands, Candidate{
+				Freq:      float64(n) * df,                   // candidate0(1,k) = n*df
+				DT:        (float64(jpeak[n]) - 0.5) * tstep, // candidate0(2,k) = (jpeak(n)-0.5)*tstep
+				SyncPower: red[n],                            // candidate0(3,k) = red(n)
+			})
+		}
+
+		// sync8.f90 line 126: if(abs(jpeak2(n)-jpeak(n)).eq.0) cycle
+		// Skip wide-peak candidate if it's at the same lag as narrow peak.
+		if jpeak2[n] == jpeak[n] {
+			continue
+		}
+
+		if len(cands) >= maxPreCand {
+			break
+		}
+
+		// sync8.f90 lines 128–133: emit wide-peak candidate if red2 >= syncmin
+		if n >= 0 && n < len(red2) && red2[n] >= syncmin && !math.IsNaN(red2[n]) {
+			cands = append(cands, Candidate{
+				Freq:      float64(n) * df,
+				DT:        (float64(jpeak2[n]) - 0.5) * tstep,
+				SyncPower: red2[n],
+			})
+		}
+	}
+
+	return cands
 }
 
 // ── Step 6: Near-dupe suppression ────────────────────────────────────────
@@ -474,7 +529,21 @@ func extractPreCandidates(red, red2 []float64, jpeak, jpeak2 []int, nfa, nfb int
 //
 // For any two candidates within 4 Hz and 0.04 s, zero out the weaker one.
 func suppressDuplicates(cands []Candidate) {
-	// TODO: port near-dupe suppression
+	// sync8.f90 lines 138–149: O(n²) near-dupe suppression.
+	// For any pair within 4 Hz and 0.04 s, zero out the weaker one's SyncPower.
+	for i := 1; i < len(cands); i++ {
+		for j := 0; j < i; j++ {
+			fdiff := math.Abs(cands[i].Freq) - math.Abs(cands[j].Freq)
+			tdiff := math.Abs(cands[i].DT - cands[j].DT)
+			if math.Abs(fdiff) < 4.0 && tdiff < 0.04 {
+				if cands[i].SyncPower >= cands[j].SyncPower {
+					cands[j].SyncPower = 0
+				} else {
+					cands[i].SyncPower = 0
+				}
+			}
+		}
+	}
 }
 
 // ── Step 7: Sort + QSO-frequency prioritization ─────────────────────────
@@ -482,10 +551,47 @@ func suppressDuplicates(cands []Candidate) {
 // sync8.f90 lines 153–174:
 //
 // 1. Place candidates within ±10 Hz of nfqso at the top.
-// 2. Append remaining in descending sync power order.
+// 2. Append the remaining in descending sync power order.
 // 3. Cap at maxcand.
 func finalSort(cands []Candidate, syncmin float64, nfqso, maxcand int) []Candidate {
-	// TODO: port final sort + prioritization
-	_ = sort.Slice // ensure import is used
-	return nil
+	if len(cands) == 0 {
+		return nil
+	}
+
+	// sync8.f90 line 154: call indexx(candidate0(3,1:ncand),ncand,indx)
+	// Sort indices by SyncPower ascending (we'll walk in reverse for descending).
+	indx := make([]int, len(cands))
+	for i := range indx {
+		indx[i] = i
+	}
+	sort.Slice(indx, func(a, b int) bool {
+		return cands[indx[a]].SyncPower < cands[indx[b]].SyncPower
+	})
+
+	var out []Candidate
+
+	// sync8.f90 lines 156–162: place candidates within ±10 Hz of nfqso first.
+	for i := 0; i < len(cands); i++ {
+		if math.Abs(cands[i].Freq-float64(nfqso)) <= 10.0 && cands[i].SyncPower >= syncmin {
+			out = append(out, cands[i])
+			cands[i].SyncPower = 0 // mark as consumed
+		}
+	}
+
+	// sync8.f90 lines 165–173: append remaining in descending sync order.
+	for i := len(indx) - 1; i >= 0; i-- {
+		j := indx[i]
+		if cands[j].SyncPower >= syncmin {
+			out = append(out, Candidate{
+				Freq:      math.Abs(cands[j].Freq),
+				DT:        cands[j].DT,
+				SyncPower: cands[j].SyncPower,
+			})
+			if len(out) >= maxcand {
+				break
+			}
+		}
+	}
+
+	return out
 }

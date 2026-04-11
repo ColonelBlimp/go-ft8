@@ -338,10 +338,17 @@ func TestSync8Skeleton(t *testing.T) {
 		}
 	}
 
-	// For now just verify it runs without panic.
-	// As Sync8 is implemented, we'll add real assertions here.
-	if candidates != nil {
-		t.Logf("First candidate: freq=%.1f Hz  DT=%.3f s  sync=%.2f",
-			candidates[0].Freq, candidates[0].DT, candidates[0].SyncPower)
+	// Log the top candidates from the full Sync8 pipeline.
+	if len(candidates) > 0 {
+		n := 20
+		if len(candidates) < n {
+			n = len(candidates)
+		}
+		t.Logf("Top %d candidates:", n)
+		for i := 0; i < n; i++ {
+			c := candidates[i]
+			t.Logf("  #%2d  freq=%7.1f Hz  DT=%+6.2f s  sync=%6.2f",
+				i+1, c.Freq, c.DT, c.SyncPower)
+		}
 	}
 }
