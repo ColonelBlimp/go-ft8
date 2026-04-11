@@ -202,6 +202,9 @@ func computeSync2D(spec *Spectrogram, nfa, nfb int, df float64, nssy, nfos, jstr
 	}
 	ibFreq := int(math.Round(float64(nfb) / df)) // nint(nfb/df)
 	// Clamp ibFreq so i+nfos*6 stays within padded s dimension.
+	// No lower clamp on iaFreq is needed: the smallest Costas tone offset
+	// is nfos*Icos7[3] = nfos*0 = 0, so i+0 = iaFreq ≥ 1 is always safe.
+	// The largest offset is nfos*6 = 12, which is upward — handled here.
 	if ibFreq+nfos*6 >= len(s) {
 		ibFreq = len(s) - nfos*6 - 1
 	}
@@ -418,9 +421,11 @@ func normalizeByPercentile(red, red2 []float64, nfa, nfb int, df float64) []int 
 	}
 
 	// sync8.f90 lines 109–110: base = red(ibase); red = red / base
+	// Only normalize the active range [ia..ib] — bins outside this range
+	// are unused and normalizing them would be an invariant violation.
 	base := red[ibase]
 	if base > 0 {
-		for i := range red {
+		for i := ia; i <= ib; i++ {
 			red[i] /= base
 		}
 	}
@@ -439,7 +444,7 @@ func normalizeByPercentile(red, red2 []float64, nfa, nfb int, df float64) []int 
 
 	base2 := red2[ibase2]
 	if base2 > 0 {
-		for i := range red2 {
+		for i := ia; i <= ib; i++ {
 			red2[i] /= base2
 		}
 	}
@@ -543,9 +548,9 @@ func suppressDuplicates(cands []Candidate) {
 	// For any pair within 4 Hz and 0.04 s, zero out the weaker one's SyncPower.
 	for i := 1; i < len(cands); i++ {
 		for j := 0; j < i; j++ {
-			fdiff := math.Abs(cands[i].Freq) - math.Abs(cands[j].Freq)
+			fdiff := math.Abs(cands[i].Freq - cands[j].Freq)
 			tdiff := math.Abs(cands[i].DT - cands[j].DT)
-			if math.Abs(fdiff) < 4.0 && tdiff < 0.04 {
+			if fdiff < 4.0 && tdiff < 0.04 {
 				if cands[i].SyncPower >= cands[j].SyncPower {
 					cands[j].SyncPower = 0
 				} else {

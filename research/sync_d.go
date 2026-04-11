@@ -7,40 +7,40 @@ package research
 
 import (
 	"math"
+	"sync"
 )
 
 // csync holds the precomputed Costas waveforms: csync[tone][sample].
 // Fortran: csync(0:6,32) with 1-indexed j=1..32.
 // Go: csync[0..6][0..31] (0-indexed).
 //
-// Initialised once on first call (matches Fortran's save/first pattern).
+// Initialised once on first call via sync.Once (matches Fortran's
+// save/first pattern, but safe for concurrent use).
 var csync [7][32]complex128
-var csyncInit bool
+var csyncOnce sync.Once
 
 func initCsync() {
-	if csyncInit {
-		return
-	}
-	// sync8d.f90 lines 20–31:
-	//   twopi=8.0*atan(1.0)
-	//   do i=0,6
-	//     phi=0.0
-	//     dphi=twopi*icos7(i)/32.0
-	//     do j=1,32
-	//       csync(i,j)=cmplx(cos(phi),sin(phi))
-	//       phi=mod(phi+dphi,twopi)
-	//     enddo
-	//   enddo
-	twopi := 8.0 * math.Atan(1.0)
-	for i := 0; i <= 6; i++ {
-		phi := 0.0
-		dphi := twopi * float64(Icos7[i]) / 32.0
-		for j := 0; j < 32; j++ {
-			csync[i][j] = complex(math.Cos(phi), math.Sin(phi))
-			phi = math.Mod(phi+dphi, twopi)
+	csyncOnce.Do(func() {
+		// sync8d.f90 lines 20–31:
+		//   twopi=8.0*atan(1.0)
+		//   do i=0,6
+		//     phi=0.0
+		//     dphi=twopi*icos7(i)/32.0
+		//     do j=1,32
+		//       csync(i,j)=cmplx(cos(phi),sin(phi))
+		//       phi=mod(phi+dphi,twopi)
+		//     enddo
+		//   enddo
+		twopi := 8.0 * math.Atan(1.0)
+		for i := 0; i <= 6; i++ {
+			phi := 0.0
+			dphi := twopi * float64(Icos7[i]) / 32.0
+			for j := 0; j < 32; j++ {
+				csync[i][j] = complex(math.Cos(phi), math.Sin(phi))
+				phi = math.Mod(phi+dphi, twopi)
+			}
 		}
-	}
-	csyncInit = true
+	})
 }
 
 // Sync8d computes the Costas-array sync power for a complex downsampled

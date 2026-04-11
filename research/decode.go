@@ -27,12 +27,19 @@ func DefaultDecodeParams() DecodeParams {
 	return ft8x.DefaultDecodeParams()
 }
 
+// prodDS caches a single production Downsampler for the delegation stub.
+// The research Downsampler is a local type, but the production DecodeSingle
+// expects *ft8x.Downsampler. We keep one production DS and let newdat=true
+// on first call so it computes the FFT once, then caches it.
+var prodDS *ft8x.Downsampler
+
 // DecodeSingle attempts to decode a single FT8 signal at the given frequency
 // and time offset.
 //
 // Port of subroutine ft8b from wsjt-wsjtx/lib/ft8/ft8b.f90.
 //
-// TODO: port from Fortran
+// TODO: port from Fortran — delegates to production ft8x. Uses a cached
+// production Downsampler to avoid recomputing the 192000-point FFT per call.
 func DecodeSingle(
 	dd []float32,
 	ds *Downsampler,
@@ -41,7 +48,16 @@ func DecodeSingle(
 	newdat bool,
 	params DecodeParams,
 ) (DecodeCandidate, bool) {
-	return ft8x.DecodeSingle(dd, ds, f1, xdt, newdat, params)
+	if prodDS == nil {
+		prodDS = ft8x.NewDownsampler()
+	}
+	return ft8x.DecodeSingle(dd, prodDS, f1, xdt, newdat, params)
+}
+
+// ResetProdDS resets the cached production Downsampler so the next
+// DecodeSingle call recomputes the FFT. Call this when switching audio data.
+func ResetProdDS() {
+	prodDS = nil
 }
 
 // DecodeIterative runs the full FT8 decode pipeline with iterative signal
