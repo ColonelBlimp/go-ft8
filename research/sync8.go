@@ -303,11 +303,61 @@ func computeSync2D(spec *Spectrogram, nfa, nfb int, df float64, nssy, nfos, jstr
 //	jpeak2[i] = lag of max sync2d within ±JZ (wide search)
 //	red2[i]   = sync2d at jpeak2[i]
 func findPeaks(sync2d [][]float64, nfa, nfb int, df float64) (jpeak []int, red []float64, jpeak2 []int, red2 []float64) {
-	// TODO: port peak finding
+	if sync2d == nil {
+		return make([]int, NH1+1), make([]float64, NH1+1),
+			make([]int, NH1+1), make([]float64, NH1+1)
+	}
+
+	// sync8.f90 lines 87–88: initialize to zero
 	jpeak = make([]int, NH1+1)
 	red = make([]float64, NH1+1)
 	jpeak2 = make([]int, NH1+1)
 	red2 = make([]float64, NH1+1)
+
+	// sync8.f90 lines 46–47: recompute freq bin bounds (same as computeSync2D)
+	iaFreq := int(math.Round(float64(nfa) / df))
+	if iaFreq < 1 {
+		iaFreq = 1
+	}
+	ibFreq := int(math.Round(float64(nfb) / df))
+
+	// sync8.f90 lines 89–90
+	mlag := 10  // narrow search ±10 lags (±0.4 s)
+	mlag2 := jz // wide search ±62 lags (±2.48 s)
+
+	// sync8.f90 lines 91–98
+	for i := iaFreq; i <= ibFreq; i++ {
+		if i >= len(sync2d) {
+			break
+		}
+
+		// sync8.f90 line 92: ii = maxloc(sync2d(i,-mlag:mlag)) - 1 - mlag
+		// Narrow search: find lag with max sync2d in [-mlag, +mlag]
+		bestJ := -mlag
+		bestV := sync2d[i][-mlag+jz]
+		for lag := -mlag + 1; lag <= mlag; lag++ {
+			if v := sync2d[i][lag+jz]; v > bestV {
+				bestV = v
+				bestJ = lag
+			}
+		}
+		jpeak[i] = bestJ
+		red[i] = bestV
+
+		// sync8.f90 line 95: ii = maxloc(sync2d(i,-mlag2:mlag2)) - 1 - mlag2
+		// Wide search: find lag with max sync2d in [-jz, +jz]
+		bestJ2 := -mlag2
+		bestV2 := sync2d[i][0] // sync2d[i][-jz + jz] = sync2d[i][0]
+		for lag := -mlag2 + 1; lag <= mlag2; lag++ {
+			if v := sync2d[i][lag+jz]; v > bestV2 {
+				bestV2 = v
+				bestJ2 = lag
+			}
+		}
+		jpeak2[i] = bestJ2
+		red2[i] = bestV2
+	}
+
 	return
 }
 
@@ -319,7 +369,90 @@ func findPeaks(sync2d [][]float64, nfa, nfb int, df float64) (jpeak []int, red [
 // divide all values by it.  This normalizes so that syncmin thresholds
 // are relative to the noise floor.
 func normalizeByPercentile(red, red2 []float64, nfa, nfb int, df float64) {
-	// TODO: port percentile normalization
+	// sync8.f90 lines 46–47: frequency bin bounds
+	ia := int(math.Round(float64(nfa) / df))
+	if ia < 1 {
+		ia = 1
+	}
+	ib := int(math.Round(float64(nfb) / df))
+	if ib >= len(red) {
+		ib = len(red) - 1
+	}
+
+	// sync8.f90 line 99: iz = ib - ia + 1
+	iz := ib - ia + 1
+	if iz < 1 {
+		return
+	}
+
+	// sync8.f90 line 101: npctile = nint(0.40 * iz)
+	npctile := int(math.Round(0.40 * float64(iz)))
+	if npctile < 1 {
+		// sync8.f90 lines 102–104: bail out
+		return
+	}
+
+	// ── Normalize red ────────────────────────────────────────────────
+	// sync8.f90 line 100: call indexx(red(ia:ib), iz, indx)
+	// indexx returns ascending-order indices into red[ia..ib].
+	indx := indexx(red, ia, ib)
+
+	// sync8.f90 line 106: ibase = indx(npctile) - 1 + ia
+	// indx is 0-based here (Go), so indx[npctile-1] is the npctile-th element.
+	ibase := indx[npctile-1]
+	if ibase < 1 {
+		ibase = 1
+	}
+	if ibase > NH1 {
+		ibase = NH1
+	}
+
+	// sync8.f90 lines 109–110: base = red(ibase); red = red / base
+	base := red[ibase]
+	if base > 0 {
+		for i := range red {
+			red[i] /= base
+		}
+	}
+
+	// ── Normalize red2 ───────────────────────────────────────────────
+	// sync8.f90 lines 111–116: same for red2
+	indx2 := indexx(red2, ia, ib)
+
+	ibase2 := indx2[npctile-1]
+	if ibase2 < 1 {
+		ibase2 = 1
+	}
+	if ibase2 > NH1 {
+		ibase2 = NH1
+	}
+
+	base2 := red2[ibase2]
+	if base2 > 0 {
+		for i := range red2 {
+			red2[i] /= base2
+		}
+	}
+}
+
+// indexx returns indices that sort arr[ia..ib] in ascending order.
+// The returned indices are absolute indices into arr (not relative to ia).
+// This matches Fortran's indexx: indx(k) points to the k-th smallest
+// element of arr(ia:ib), with indx values offset by (ia-1) so they
+// reference arr directly.
+func indexx(arr []float64, ia, ib int) []int {
+	iz := ib - ia + 1
+	if iz <= 0 {
+		return nil
+	}
+	indx := make([]int, iz)
+	for i := 0; i < iz; i++ {
+		indx[i] = ia + i // absolute index into arr
+	}
+	sort.Slice(indx, func(a, b int) bool {
+		return arr[indx[a]] < arr[indx[b]]
+	})
+	return indx
 }
 
 // ── Step 5: Extract pre-candidates ───────────────────────────────────────
