@@ -285,9 +285,39 @@ func TestSync8Skeleton(t *testing.T) {
 	t.Logf("Sync8 returned %d candidates", len(candidates))
 	t.Logf("sbase[0:5] = %v", sbase[0:5])
 
-	// Verify the spectrogram is computing real data by calling
-	// computeSpectrogram directly and checking for non-zero power.
+	// Verify sync2d is producing real correlation data by calling
+	// computeSync2D directly on known signal frequencies from capture.wav.
 	spec := ComputeSpectrogramForTest(dd[:], NMAX)
+	tstep := float64(NSTEP) / Fs
+	dfVal := Fs / float64(NFFT1)
+	nssy := NSPS / NSTEP
+	nfosVal := NFFT1 / NSPS
+	jstrt := int(0.5 / tstep)
+	sync2d := ComputeSync2DForTest(spec, nfa, nfb, dfVal, nssy, nfosVal, jstrt)
+
+	if sync2d != nil {
+		// Check a few known signal frequencies from capture.wav.
+		// Look for the peak sync value across all lags at each freq bin.
+		for _, freq := range []float64{300.0, 568.0, 1000.0, 1097.0, 1500.0} {
+			bin := int(math.Round(freq / dfVal))
+			if bin < 1 || bin >= len(sync2d) {
+				continue
+			}
+			bestSync := 0.0
+			bestLag := 0
+			for lag := -JZ; lag <= JZ; lag++ {
+				if v := sync2d[bin][lag+JZ]; v > bestSync {
+					bestSync = v
+					bestLag = lag
+				}
+			}
+			dt := (float64(bestLag) - 0.5) * tstep
+			t.Logf("  sync2d at %.0f Hz (bin %d): peak=%.2f  lag=%d  DT=%.2f s",
+				freq, bin, bestSync, bestLag, dt)
+		}
+	} else {
+		t.Error("sync2d is nil — computeSync2D returned nothing")
+	}
 	nonZeroBins := 0
 	for i := 1; i <= NH1; i++ {
 		if spec.Savg[i] > 0 {

@@ -34,5 +34,8 @@ const (
 	NDOWN = 60
 )
 
+// JZ is the max sync correlation lag (exported for tests).
+const JZ = 62
+
 // Icos7 is the Costas 7×7 sync array.
 var Icos7 = [7]int{3, 1, 4, 0, 6, 5, 2}

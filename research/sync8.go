@@ -9,6 +9,7 @@
 package research
 
 import (
+	"math"
 	"sort"
 )
 
@@ -161,6 +162,11 @@ func ComputeSpectrogramForTest(dd []float32, npts int) *Spectrogram {
 	return computeSpectrogram(dd, npts)
 }
 
+// ComputeSync2DForTest exposes computeSync2D for testing.
+func ComputeSync2DForTest(spec *Spectrogram, nfa, nfb int, df float64, nssy, nfos, jstrt int) [][]float64 {
+	return computeSync2D(spec, nfa, nfb, df, nssy, nfos, jstrt)
+}
+
 // ── Step 1b: Spectrum baseline ───────────────────────────────────────────
 //
 // sync8.f90 line 44:
@@ -187,12 +193,102 @@ func getSpectrumBaseline(dd []float32, nfa, nfb int) [NH1]float64 {
 //
 // Returns sync2d[0..NH1+pad][0..2*jz], offset by +jz in second index.
 func computeSync2D(spec *Spectrogram, nfa, nfb int, df float64, nssy, nfos, jstrt int) [][]float64 {
-	// TODO: port Costas correlation loop
+	s := spec.S
+
+	// sync8.f90 lines 46–47: frequency bin bounds
+	iaFreq := int(math.Round(float64(nfa) / df)) // nint(nfa/df)
+	if iaFreq < 1 {
+		iaFreq = 1
+	}
+	ibFreq := int(math.Round(float64(nfb) / df)) // nint(nfb/df)
+	// Clamp ibFreq so i+nfos*6 stays within padded s dimension.
+	if ibFreq+nfos*6 >= len(s) {
+		ibFreq = len(s) - nfos*6 - 1
+	}
+	if ibFreq < iaFreq {
+		return nil
+	}
+
+	// Allocate sync2d[0..nh1Pad][0..2*jz].
+	// Second index: Fortran j ∈ [-jz,+jz] maps to Go index j+jz ∈ [0,2*jz].
+	// Use contiguous backing array (same optimization as spectrogram).
 	nh1Pad := NH1 + nfos*6 + 1
+	lagCols := 2*jz + 1
+	backing := make([]float64, (nh1Pad+1)*lagCols)
 	sync2d := make([][]float64, nh1Pad+1)
 	for i := range sync2d {
-		sync2d[i] = make([]float64, 2*jz+1)
+		sync2d[i] = backing[i*lagCols : (i+1)*lagCols]
 	}
+
+	// sync8.f90 lines 54–85: double loop over freq bins and time lags.
+	for i := iaFreq; i <= ibFreq; i++ {
+		for j := -jz; j <= jz; j++ {
+			var ta, tb, tc float64
+			var t0a, t0b, t0c float64
+
+			for n := 0; n <= 6; n++ {
+				// sync8.f90 line 63: m = j + jstrt + nssy*n
+				m := j + jstrt + nssy*n
+
+				// ── Array a: first Costas (symbols 0–6) ──────────
+				// sync8.f90 lines 64–67
+				if m >= 1 && m <= NHSYM {
+					ta += s[i+nfos*Icos7[n]][m]
+					// sum(s(i:i+nfos*6:nfos, m)) = s[i][m] + s[i+2][m] + ... + s[i+12][m]
+					for k := 0; k <= 6; k++ {
+						t0a += s[i+nfos*k][m]
+					}
+				}
+
+				// ── Array b: second Costas (symbols 36–42) ───────
+				// sync8.f90 lines 68–69 (no bounds check in Fortran)
+				mb := m + nssy*36
+				if mb >= 1 && mb <= NHSYM {
+					tb += s[i+nfos*Icos7[n]][mb]
+					for k := 0; k <= 6; k++ {
+						t0b += s[i+nfos*k][mb]
+					}
+				}
+
+				// ── Array c: third Costas (symbols 72–78) ────────
+				// sync8.f90 lines 70–73
+				mc := m + nssy*72
+				if mc >= 1 && mc <= NHSYM {
+					tc += s[i+nfos*Icos7[n]][mc]
+					for k := 0; k <= 6; k++ {
+						t0c += s[i+nfos*k][mc]
+					}
+				}
+			}
+
+			// sync8.f90 lines 75–78: ratio-metric sync for all three arrays
+			t := ta + tb + tc
+			t0 := t0a + t0b + t0c
+			t0 = (t0 - t) / 6.0
+			syncABC := 0.0
+			if t0 > 0 {
+				syncABC = t / t0
+			}
+
+			// sync8.f90 lines 79–82: ratio-metric sync for b+c only
+			// (helps late-arriving signals where array a is clipped)
+			t = tb + tc
+			t0 = t0b + t0c
+			t0 = (t0 - t) / 6.0
+			syncBC := 0.0
+			if t0 > 0 {
+				syncBC = t / t0
+			}
+
+			// sync8.f90 line 83: sync2d(i,j) = max(sync_abc, sync_bc)
+			if syncBC > syncABC {
+				sync2d[i][j+jz] = syncBC
+			} else {
+				sync2d[i][j+jz] = syncABC
+			}
+		}
+	}
+
 	return sync2d
 }
 
