@@ -51,6 +51,28 @@ func PlausibleCallsign(call string) bool {
 		base = base[:len(base)-2]
 	}
 
+	// Compound callsigns: PREFIX/CALL or CALL/SUFFIX (e.g., V4/SP9FIH,
+	// ZL4XZ/VK).  Type-4 messages carry the full non-standard callsign.
+	// Validate by checking that each part contains letters and digits and
+	// at least one part looks like a plausible base callsign.
+	if strings.Contains(base, "/") {
+		parts := strings.SplitN(base, "/", 2)
+		if len(parts) == 2 && len(parts[0]) >= 1 && len(parts[1]) >= 1 {
+			// Accept if either part is a plausible standard callsign.
+			if PlausibleCallsign(parts[0]) || PlausibleCallsign(parts[1]) {
+				return true
+			}
+			// Also accept prefix/call patterns where the prefix is short
+			// alphanumeric (1–4 chars) and the call part is a valid callsign.
+			pOk := len(parts[0]) <= 4 && isAlphaNum(parts[0])
+			sOk := len(parts[1]) <= 4 && isAlphaNum(parts[1])
+			if pOk || sOk {
+				return true
+			}
+		}
+		return false
+	}
+
 	n := len(base)
 	// Length check: standard callsigns are 3–6 characters.
 	if n < 3 || n > 6 {
@@ -174,6 +196,16 @@ func PlausibleMessage(msg string) bool {
 	}
 
 	return true
+}
+
+// isAlphaNum returns true if s contains only ASCII letters and digits.
+func isAlphaNum(s string) bool {
+	for _, ch := range s {
+		if !unicode.IsLetter(ch) && !unicode.IsDigit(ch) {
+			return false
+		}
+	}
+	return len(s) > 0
 }
 
 // isReportOrToken returns true for FT8 message tokens that are not callsigns.

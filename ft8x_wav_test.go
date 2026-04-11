@@ -160,6 +160,57 @@ var capture2Candidates = []CandidateFreq{
 	{Freq: 2593.0, DT: 1.9},         // UA4CCH VK2VT RR73 (not in WSJT-X, verified real)
 }
 
+// Capture 3 (capture.wav): 21 WSJT-X decodes from FTdx10 DATA-mode capture.
+var wsjtxCapture3 = map[string]bool{
+	"VK5BU RT6C KN95":   true,
+	"CQ V4/SP9FIH":      true, // compound callsign (type 4)
+	"A61OK US1VM KN68":  true,
+	"CQ KB3Z FN20":      true,
+	"CQ NH6D BL02":      true,
+	"VK3TZ UX2QX R-07":  true,
+	"UB8CSR SV0TPN -18": true,
+	"R8AGW VU2FR RR73":  true,
+	"<...> JA8RVP QN23": true, // hashed V4/SP9FIH
+	"CQ UR5QW KN77":     true,
+	"UA0LW RK6AAC KN95": true,
+	"CQ SP4MSY KO13":    true,
+	"VK5ATH VK0DS -01":  true,
+	"VK5BU RG5A KN93":   true,
+	"5Z4VJ YB1RUS OI33": true,
+	"UA0LW UA4ARH -15":  true,
+	"VK5BU R7HL 73":     true,
+	"CQ 4S6ARW MJ97":    true,
+	"CQ CO8LY FL20":     true,
+	"VK3TZ UA3ZNQ KO81": true,
+	"VK3TZ RC7O KN87":   true,
+}
+
+// Capture 3: WSJT-X reference with approximate freq and DT (xdt convention).
+// DT values from WSJT-X output; xdt = TimeOff - 0.5.
+var capture3Candidates = []CandidateFreq{
+	{Freq: 2454, DT: 1.3 - 0.5}, // VK5BU RT6C KN95
+	{Freq: 298, DT: 1.3 - 0.5},  // CQ V4/SP9FIH
+	{Freq: 568, DT: 1.5 - 0.5},  // A61OK US1VM KN68
+	{Freq: 1100, DT: 1.5 - 0.5}, // CQ KB3Z FN20
+	{Freq: 2251, DT: 1.4 - 0.5}, // CQ NH6D BL02
+	{Freq: 1776, DT: 1.3 - 0.5}, // VK3TZ UX2QX R-07
+	{Freq: 1998, DT: 1.7 - 0.5}, // UB8CSR SV0TPN -18
+	{Freq: 2507, DT: 2.0 - 0.5}, // R8AGW VU2FR RR73
+	{Freq: 1001, DT: 1.4 - 0.5}, // <V4/SP9FIH> JA8RVP QN23
+	{Freq: 2401, DT: 1.4 - 0.5}, // CQ UR5QW KN77
+	{Freq: 1149, DT: 1.6 - 0.5}, // UA0LW RK6AAC KN95
+	{Freq: 1250, DT: 1.2 - 0.5}, // CQ SP4MSY KO13
+	{Freq: 1648, DT: 1.4 - 0.5}, // VK5ATH VK0DS -01
+	{Freq: 533, DT: 1.4 - 0.5},  // VK5BU RG5A KN93
+	{Freq: 1505, DT: 1.3 - 0.5}, // 5Z4VJ YB1RUS OI33
+	{Freq: 1211, DT: 1.5 - 0.5}, // UA0LW UA4ARH -15
+	{Freq: 2110, DT: 1.3 - 0.5}, // VK5BU R7HL 73
+	{Freq: 938, DT: 1.8 - 0.5},  // CQ 4S6ARW MJ97
+	{Freq: 932, DT: 1.2 - 0.5},  // CQ CO8LY FL20
+	{Freq: 888, DT: 1.6 - 0.5},  // VK3TZ UA3ZNQ KO81
+	{Freq: 963, DT: 1.4 - 0.5},  // VK3TZ RC7O KN87
+}
+
 // ────────────────────────────────────────────────────────────────────────────
 // Helper: expand candidate list with freq/DT offsets for search
 // ────────────────────────────────────────────────────────────────────────────
@@ -616,5 +667,165 @@ func TestFt8xWAVIterativeCapture2(t *testing.T) {
 	const minCorrect = 11
 	if correct < minCorrect {
 		t.Errorf("REGRESSION: capture2 iterative correct = %d, expected >= %d", correct, minCorrect)
+	}
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Test: Capture 3 (capture.wav) — FTdx10 DATA-mode capture
+// ────────────────────────────────────────────────────────────────────────────
+
+func TestFt8xWAVCapture3ProvidedCandidates(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping WAV decode test (slow)")
+	}
+
+	wavPath := "testdata/capture.wav"
+	if _, err := os.Stat(wavPath); os.IsNotExist(err) {
+		t.Skipf("test WAV not found: %s", wavPath)
+	}
+
+	samples, sr, err := loadWAV(wavPath)
+	if err != nil {
+		t.Fatalf("load WAV: %v", err)
+	}
+	if sr != 12000 {
+		t.Fatalf("expected 12000 Hz, got %d Hz", sr)
+	}
+	t.Logf("Loaded %d samples (%.2f s)", len(samples), float64(len(samples))/float64(sr))
+
+	candidates := expandCandidates(capture3Candidates, 10.0, 2.5, 0.5, 0.1)
+	t.Logf("Testing %d expanded candidates from %d reference positions", len(candidates), len(capture3Candidates))
+
+	params := DefaultDecodeParams()
+	results := Decode(samples, candidates, params)
+
+	correct := 0
+	falseDecodes := 0
+	t.Logf("Decoded %d message(s):", len(results))
+	for _, r := range results {
+		match := ""
+		msg := strings.TrimSpace(r.Message)
+		if wsjtxCapture3[msg] {
+			correct++
+			match = " ✓"
+		} else {
+			falseDecodes++
+			match = " ✗ (not in reference)"
+		}
+		t.Logf("  %+6.1f dt  %7.1f Hz  %+5.1f dB  nhard=%d  %s%s",
+			r.DT, r.Freq, r.SNR, r.NHardErrors, msg, match)
+	}
+
+	t.Logf("Summary: %d correct, %d false, out of %d verified reference",
+		correct, falseDecodes, len(wsjtxCapture3))
+
+	// Regression baseline: 14 correct decodes with provided candidates.
+	const minCorrect = 14
+	if correct < minCorrect {
+		t.Errorf("REGRESSION: capture3 correct = %d, expected >= %d", correct, minCorrect)
+	}
+	if falseDecodes > 0 {
+		t.Logf("NOTE: %d false decode(s) detected", falseDecodes)
+	}
+}
+
+func TestFt8xWAVCapture3OwnCandidates(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping WAV decode test (slow — brute-force candidate scan)")
+	}
+
+	wavPath := "testdata/capture.wav"
+	if _, err := os.Stat(wavPath); os.IsNotExist(err) {
+		t.Skipf("test WAV not found: %s", wavPath)
+	}
+
+	samples, sr, err := loadWAV(wavPath)
+	if err != nil {
+		t.Fatalf("load WAV: %v", err)
+	}
+	if sr != 12000 {
+		t.Fatalf("expected 12000 Hz, got %d Hz", sr)
+	}
+	t.Logf("Loaded %d samples (%.2f s)", len(samples), float64(len(samples))/float64(sr))
+
+	t.Log("Running FindCandidates (200-2600 Hz, -0.5 to +2.5 s)...")
+	candidates := FindCandidates(samples, 200, 2600, -0.5, 2.5)
+	t.Logf("Found %d candidates", len(candidates))
+
+	maxCandidates := 200
+	if len(candidates) > maxCandidates {
+		candidates = candidates[:maxCandidates]
+	}
+
+	params := DefaultDecodeParams()
+	results := Decode(samples, candidates, params)
+
+	correct := 0
+	falseDecodes := 0
+	t.Logf("Decoded %d message(s):", len(results))
+	for _, r := range results {
+		match := ""
+		msg := strings.TrimSpace(r.Message)
+		if wsjtxCapture3[msg] {
+			correct++
+			match = " ✓"
+		} else {
+			falseDecodes++
+			match = " ✗ (not in reference)"
+		}
+		t.Logf("  %+6.1f dt  %7.1f Hz  %+5.1f dB  nhard=%d  %s%s",
+			r.DT, r.Freq, r.SNR, r.NHardErrors, msg, match)
+	}
+
+	t.Logf("Summary: %d correct, %d false, out of %d verified reference",
+		correct, falseDecodes, len(wsjtxCapture3))
+}
+
+func TestFt8xWAVIterativeCapture3(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping WAV decode test (slow)")
+	}
+
+	wavPath := "testdata/capture.wav"
+	if _, err := os.Stat(wavPath); os.IsNotExist(err) {
+		t.Skipf("test WAV not found: %s", wavPath)
+	}
+
+	samples, sr, err := loadWAV(wavPath)
+	if err != nil {
+		t.Fatalf("load WAV: %v", err)
+	}
+	if sr != 12000 {
+		t.Fatalf("expected 12000 Hz, got %d Hz", sr)
+	}
+	t.Logf("Loaded %d samples (%.2f s)", len(samples), float64(len(samples))/float64(sr))
+
+	params := DefaultDecodeParams()
+	results := DecodeIterative(samples, params, 200, 2600)
+
+	correct := 0
+	falseDecodes := 0
+	t.Logf("Decoded %d message(s):", len(results))
+	for _, r := range results {
+		match := ""
+		msg := strings.TrimSpace(r.Message)
+		if wsjtxCapture3[msg] {
+			correct++
+			match = " ✓"
+		} else {
+			falseDecodes++
+			match = " ✗ (not in reference)"
+		}
+		t.Logf("  %+6.1f dt  %7.1f Hz  %+5.1f dB  nhard=%d  ap=%d  %s%s",
+			r.DT, r.Freq, r.SNR, r.NHardErrors, r.APType, msg, match)
+	}
+
+	t.Logf("Summary: %d correct, %d false, out of %d verified reference",
+		correct, falseDecodes, len(wsjtxCapture3))
+
+	// Regression baseline: 16 correct decodes with iterative decode.
+	const minCorrect = 16
+	if correct < minCorrect {
+		t.Errorf("REGRESSION: capture3 iterative correct = %d, expected >= %d", correct, minCorrect)
 	}
 }

@@ -231,7 +231,7 @@ func DecodeSingle(
 	maxOSD2 := -1
 	ndeep := ndeepD2
 	if params.Depth == 2 {
-		maxOSD2 = 1 // 1 OSD call with accumulated BP sum
+		maxOSD2 = 1 // coupled OSD: BP-accumulated sums (performs better than Fortran's uncoupled mode)
 	} else if params.Depth == 3 {
 		maxOSD2 = maxOSD
 		ndeep = ndeepD3

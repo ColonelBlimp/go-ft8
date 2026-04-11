@@ -604,7 +604,7 @@ func unpack77_1(c77 string, i3 int) (string, bool) {
 			if isnr > 50 {
 				isnr -= 101
 			}
-			crpt := fmt.Sprintf("%+d", isnr)
+			crpt := fmt.Sprintf("%+03d", isnr)
 			if ir == 0 {
 				return fmt.Sprintf("%s %s %s", call1, call2, crpt), true
 			}
