@@ -13,16 +13,25 @@
 All experimental changes, pipeline improvements, and diagnostic work MUST go
 into the `research/` sub-package (`/home/mveary/Development/go-ft8/research/`).
 
-### The source of truth is the WSJT-X Fortran codebase ONLY.
+### 🚫 CRITICAL RULES — READ BEFORE DOING ANYTHING
 
-Every function in the research pipeline is ported directly from the corresponding
-WSJT-X Fortran source at `~/Development/wsjt-wsjtx/`. **Do NOT read or reference
-the production Go code** when porting — the Fortran is the sole authority. This
-ensures any difference we find is a real algorithmic gap, not a Go vs Fortran
-precision artefact inherited from the production code.
+1. **DO NOT read or reference production Go code** — not `message.go`, not
+   `ldpc.go`, not ANY file in the repository root. The Fortran at
+   `~/Development/wsjt-wsjtx/` is the **sole source of truth** for porting.
+   Reading production code wastes time and risks inheriting bugs.
 
-**THE RESEARCH PACKAGE MUST NOT IMPORT PRODUCTION CODE** (except via thin stubs
-during the porting transition — see "Fortran porting progress" below).
+2. **DO NOT run production tests** — `go test ./...` or `go test -short ./...`
+   at the repository root touches the production `ft8x` package. Only run
+   `go test ./research/` (with appropriate flags). Production is frozen and
+   untouched; its tests are irrelevant to research work.
+
+3. **DO NOT import production code** in new research files — the research
+   package still has thin stubs that delegate to `ft8x` for un-ported
+   functions. These are being eliminated one by one. New ports must be
+   self-contained with zero `ft8x` imports.
+
+4. **Port from Fortran → Go directly.** Read the `.f90` file, write the `.go`
+   file. That's the workflow. No detours.
 
 ### Why research-only?
 
@@ -40,9 +49,11 @@ zero net benefit**:
 
 ### Research workflow
 
-1. Port each function from Fortran into `research/` stubs (one at a time, verify with tests)
-2. Run `TestRootCauseAllCaptures` to measure impact across all 3 captures
-3. Once the full pipeline is ported and matching/exceeding production, promote to production
+1. Read the Fortran source file (the `.f90` in `~/Development/wsjt-wsjtx/`)
+2. Write the Go port in `research/` — self-contained, no production imports
+3. Build: `go build ./research/`
+4. Test: `go test -short -count=1 ./research/` (research tests ONLY)
+5. Once all stubs are ported, run `TestRootCauseAllCaptures` to measure impact
 
 ---
 
@@ -60,9 +71,9 @@ verified in isolation before composing:
 | 1 | `sync_d.go` | `Sync8d()`, `HardSync()` | `sync8d.f90`, `ft8b.f90:163–176` | ✅ Ported |
 | 2 | `metrics.go` | `ComputeSymbolSpectra()`, `ComputeSoftMetrics()`, `normalizeBmet()`, `fft32()` | `ft8b.f90:154–233, 466–479` | ✅ Ported |
 | 3 | `downsample.go` | `Downsampler`, `TwkFreq1()` | `ft8_downsample.f90`, `twkfreq1.f90` | TODO |
-| 4 | `ldpc.go` | `Decode174_91()` (BP + OSD) | `decode174_91.f90`, `osd174_91.f90` | TODO |
-| 5 | `ldpc_parity.go` | `LDPCMn`, `LDPCNm`, `LDPCNrw` | `ldpc_174_91_c_parity.f90` | TODO |
-| 6 | `message.go` | `Unpack77()`, `BitsToC77()` | `packjt77.f90` | TODO |
+| 4 | `ldpc.go` + `crc.go` | `Decode174_91()`, `BPDecode()`, `OSDDecode()`, CRC-14 | `decode174_91.f90`, `osd174_91.f90` | ✅ Ported |
+| 5 | `ldpc_parity.go` | `LDPCMn`, `LDPCNm`, `LDPCNrw`, generator hex | `ldpc_174_91_c_parity.f90` | ✅ Ported |
+| 6 | `message.go` | `Unpack77()`, `BitsToC77()`, `unpack28()`, grid helpers | `packjt77.f90` | ✅ Ported |
 | 7 | `ap.go` | `ApplyAP()` | `ft8b.f90:243–401` | TODO |
 | 8 | `encode.go` | `GenFT8Tones()`, `GenFT8CWave()` | `gen_ft8.f90` | TODO |
 | 9 | `subtract.go` | `SubtractFT8()`, `SubtractFT8FFT()` | `subtractft8.f90` | TODO |
@@ -235,15 +246,16 @@ now call local functions; stub files delegate to production only until ported.
 | `realfft.go` | 138 | N/A | Optimized N/2-point real FFT (uses local `FFT()`) |
 | `params.go` | 42 | `ft8_params.f90` | Base FT8 constants (Fs, NSPS, NN, NMAX, etc.) |
 | `constants.go` | 53 | `ft8_params.f90` | Derived constants (NP2, Fs2, Dt2, ScaleFac, LDPC params, GrayMap) |
+| `ldpc.go` | ~800 | `decode174_91.f90`, `osd174_91.f90` | `Decode174_91()`, `BPDecode()`, `OSDDecode()`, `platanh()`, `nextpat91()` |
+| `ldpc_parity.go` | ~400 | `ldpc_174_91_c_parity.f90` | Parity check matrices `LDPCMn`, `LDPCNm`, `LDPCNrw`; generator hex data |
+| `crc.go` | ~50 | `crc14.cpp` | `CRC14Bits()`, `CheckCRC14Codeword()` — CRC-14 for LDPC |
+| `message.go` | ~785 | `packjt77.f90` | `Unpack77()`, `BitsToC77()`, `unpack28()`, `unpacktext77()`, grid helpers |
 
 **Stub files (delegate to production, TODO port from Fortran):**
 
 | File | Lines | Fortran source | Functions stubbed |
 |---|---|---|---|
 | `downsample.go` | 37 | `ft8_downsample.f90`, `twkfreq1.f90` | `Downsampler`, `NewDownsampler()`, `TwkFreq1()` |
-| `ldpc.go` | 25 | `decode174_91.f90`, `osd174_91.f90` | `Decode174_91()` |
-| `ldpc_parity.go` | 21 | `ldpc_174_91_c_parity.f90` | `LDPCMn`, `LDPCNm`, `LDPCNrw` |
-| `message.go` | 28 | `packjt77.f90` | `Unpack77()`, `BitsToC77()` |
 | `ap.go` | 21 | `ft8b.f90:243–401` | `ApplyAP()` |
 | `encode.go` | 29 | `gen_ft8.f90` | `GenFT8Tones()`, `GenFT8CWave()` |
 | `subtract.go` | 32 | `subtractft8.f90` | `SubtractFT8()`, `SubtractFT8FFT()` |
@@ -279,12 +291,13 @@ ports, working up the call chain:
 1. ~~`sync_d.go` — `Sync8d`, `HardSync`~~ ✅
 2. ~~`metrics.go` — `ComputeSymbolSpectra`, `ComputeSoftMetrics`~~ ✅
 3. **`downsample.go`** — `Downsampler`, `TwkFreq1()` ← NEXT
-4. **`ldpc.go`** — `Decode174_91()` (BP + OSD)
-5. **`message.go`** — `Unpack77()`, `BitsToC77()`
-6. **`ap.go`** — `ApplyAP()`
-7. **`encode.go`** — `GenFT8Tones()`, `GenFT8CWave()`
-8. **`subtract.go`** — `SubtractFT8()`, `SubtractFT8FFT()`
-9. **`decode.go`** — `DecodeSingle()`, `DecodeIterative()`
+4. ~~`ldpc.go` + `crc.go` — `Decode174_91()`, `BPDecode()`, `OSDDecode()`, CRC-14~~ ✅
+5. ~~`ldpc_parity.go` — `LDPCMn`, `LDPCNm`, `LDPCNrw`, generator hex~~ ✅
+6. ~~`message.go` — `Unpack77()`, `BitsToC77()`~~ ✅
+7. **`ap.go`** — `ApplyAP()`
+8. **`encode.go`** — `GenFT8Tones()`, `GenFT8CWave()`
+9. **`subtract.go`** — `SubtractFT8()`, `SubtractFT8FFT()`
+10. **`decode.go`** — `DecodeSingle()`, `DecodeIterative()`
 
 Once all stubs are ported, the research package will be **fully self-contained**
 with zero production imports, and every line traceable to the Fortran source.
@@ -340,13 +353,12 @@ At that point we can:
     - All passes: `basebandTimeScan` retry for `SyncPower ≥ 2.0` candidates that fail on first attempt
     - Early termination when a pass produces no new decodes
 
-15. **Research package decoupled from production** — As of 2026-04-11, all research
-    test files call local functions only (no `ft8x.*` imports in test code). The
-    research library files use thin stubs that delegate to production where not yet
-    ported. Two functions are fully ported from Fortran: `Sync8d`/`HardSync`
-    (`sync_d.go`) and `ComputeSymbolSpectra`/`ComputeSoftMetrics` (`metrics.go`).
-    The remaining stubs will be replaced one at a time, each verified by existing
-    tests before moving to the next.
+15. **Research package decoupling progress** — As of 2026-04-11, 10 of 12 research
+    library files have been ported from Fortran or are self-contained:
+    `sync_d.go`, `metrics.go`, `sync8.go`, `realfft.go`, `params.go`, `constants.go`,
+    `ldpc.go`, `ldpc_parity.go`, `crc.go`, `message.go`. The remaining 6 stub files
+    (`downsample.go`, `ap.go`, `encode.go`, `subtract.go`, `decode.go`, `fft.go`)
+    still delegate to production `ft8x` and will be replaced one at a time.
 
 ---
 
