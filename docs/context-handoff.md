@@ -59,7 +59,7 @@ zero net benefit**:
 ## Fortran porting progress
 
 The research package has been **fully decoupled** from production `ft8x`.
-All 16 library files are direct Fortran ports or self-contained implementations
+All 17 library files are direct Fortran ports or self-contained implementations
 with zero production imports.
 
 The porting order follows the call chain bottom-up, so each piece can be
@@ -73,7 +73,8 @@ verified in isolation before composing:
 | 4 | `ldpc.go` + `crc.go` | `Decode174_91()`, `BPDecode()`, `OSDDecode()`, CRC-14 | `decode174_91.f90`, `osd174_91.f90` | ✅ Ported |
 | 5 | `ldpc_parity.go` | `LDPCMn`, `LDPCNm`, `LDPCNrw`, generator hex | `ldpc_174_91_c_parity.f90` | ✅ Ported |
 | 6 | `message.go` | `Unpack77()`, `BitsToC77()`, `unpack28()`, grid helpers | `packjt77.f90` | ✅ Ported |
-| 7 | `ap.go` | `ApplyAP()` | `ft8b.f90:243–401` | ✅ Ported (ncontest=0 only, 2026-04-12) |
+| 7 | `ap.go` | `ApplyAP()`, `ComputeAPSymbols()` | `ft8b.f90:243–401`, `ft8apset.f90` | ✅ Ported (ncontest=0 only) |
+| 7b | `pack28.go` | `pack28()`, `ihashcall()`, `stdcall()` | `packjt77.f90:621–751`, `packjt77.f90:64–79`, `q65_set_list.f90:66–97` | ✅ Ported |
 | 8 | `encode.go` | `GenFT8Tones()`, `GenFT8CWave()`, `gfskPulse()` | `genft8.f90`, `gen_ft8wave.f90`, `gfsk_pulse.f90` | ✅ Ported |
 | 9 | `subtract.go` | `SubtractFT8()` | `subtractft8.f90` | ✅ Ported |
 | 10 | `decode.go` | `DecodeSingle()`, `DecodeIterative()`, `Sync8FindCandidates()`, types | `ft8b.f90`, `ft8_decode.f90` | ✅ Ported |
@@ -176,7 +177,7 @@ Full test suite (WAV, 3 caps):   ~39 s
 
 Run via: `go test -v -run "TestRootCauseAllCaptures" ./research/`
 
-**Research pipeline decode counts** (pre-decoupling, using research sync8 + ft8x delegation stubs):
+**Research pipeline decode counts** (fully decoupled, after maxosd fix):
 
 | Capture | Research pipeline | Production iterative | WSJT-X reference |
 |---|---|---|---|
@@ -185,8 +186,9 @@ Run via: `go test -v -run "TestRootCauseAllCaptures" ./research/`
 | Cap 3 | 16/21 | 16/21 | 21/21 |
 
 **Note:** Production iterative slightly outperforms the research pipeline on Caps 1 and 2.
-This means the research pipeline's sync8 or candidate handling has room for improvement
-before it can serve as a better baseline than production.
+The dominant gap vs WSJT-X is AP limitation (15 of 18 missing signals are non-CQ and need
+AP types 2-6). AP type 2 is now implemented; testing with `MyCall` set may recover
+some of these signals.
 
 **Failure classification (16 missing in research, 18 missing vs WSJT-X):**
 
@@ -235,7 +237,7 @@ numerically correct — the gap is NOT a Go vs Fortran precision issue.
 
 All research files are in `research/` (`/home/mveary/Development/go-ft8/research/`).
 The research package is **fully self-contained** — zero production `ft8x` imports.
-All 16 library files are direct Fortran ports or standard algorithm implementations.
+All 17 library files are direct Fortran ports or standard algorithm implementations.
 
 **Ported from Fortran (self-contained, no production dependency):**
 
@@ -252,7 +254,8 @@ All 16 library files are direct Fortran ports or standard algorithm implementati
 | `crc.go` | ~50 | `crc14.cpp` | `CRC14Bits()`, `CheckCRC14Codeword()` — CRC-14 for LDPC |
 | `message.go` | ~785 | `packjt77.f90` | `Unpack77()`, `BitsToC77()`, `unpack28()`, `unpacktext77()`, grid helpers |
 | `downsample.go` | 221 | `ft8_downsample.f90`, `twkfreq1.f90` | `Downsampler`, `NewDownsampler()`, `Downsample()`, `TwkFreq1()`, `cshift()` |
-| `ap.go` | 140 | `ft8b.f90:300–401` | `ApplyAP()`, mcq/mrrr/m73/mrr73 constants (ncontest=0 only) |
+| `ap.go` | ~190 | `ft8b.f90:300–401`, `ft8apset.f90` | `ApplyAP()`, `ComputeAPSymbols()`, mcq/mrrr/m73/mrr73 constants (ncontest=0 only) |
+| `pack28.go` | ~170 | `packjt77.f90:621–751, 64–79`, `q65_set_list.f90:66–97` | `pack28()` — callsign→28-bit encoding; `ihashcall()` — hash for non-standard calls; `stdcall()` — standard callsign check |
 | `encode.go` | ~130 | `genft8.f90`, `gen_ft8wave.f90`, `gfsk_pulse.f90` | `GenFT8Tones()`, `GenFT8CWave()`, `gfskPulse()` |
 | `subtract.go` | ~130 | `subtractft8.f90` | `SubtractFT8()` (FFT-based LPF method, `lrefinedt=false` path) |
 | `decode.go` | ~300 | `ft8b.f90`, `ft8_decode.f90` | `DecodeSingle()`, `DecodeIterative()`, `Sync8FindCandidates()`, `DecodeParams`, `DecodeCandidate`, `CandidateFreq` |
@@ -273,6 +276,7 @@ All 16 library files are direct Fortran ports or standard algorithm implementati
 | `root_cause_test.go` | 303 | Root cause analysis (capture.wav only) |
 | `root_cause_all_test.go` | 466 | Root cause analysis for ALL 3 captures |
 | `timing_test.go` | 214 | Per-pass/per-candidate timing |
+| `pack28_test.go` | ~340 | pack28/ihashcall/stdcall/ComputeAPSymbols tests with round-trip verification |
 | `twid_bench_test.go` | — | Twiddle factor benchmark |
 
 ---
@@ -340,7 +344,12 @@ The research package is now ready for:
 
 10. **OSD ntheta pre-test bypass for order-1** — For order-1 base patterns (91 candidates), the pre-test is bypassed to avoid marginal-signal regressions. Higher-order patterns use the pre-test for performance.
 
-11. **AP decoding: ncontest=0 only** — Only standard QSO mode is implemented. Contest modes can be added as a future enhancement.
+11. **AP decoding: ncontest=0, types 1-2 active** — Standard QSO mode only. AP type 1
+    (CQ) and type 2 (MyCall) are implemented. Types 3-6 (MyCall+DxCall, +RRR/73/RR73)
+    are structurally wired but require `DxCall` to be set in `DecodeParams`. `pack28`,
+    `ihashcall`, `stdcall`, and `ComputeAPSymbols` are ported from Fortran
+    (`packjt77.f90`, `ft8apset.f90`, `q65_set_list.f90`). Contest modes can be added
+    as a future enhancement.
 
 12. **AP frequency guard** — AP types ≥3 are restricted to candidates within `APWidth` Hz of `NfQSO`. When `NfQSO=0` (default), the frequency guard is disabled.
 
@@ -355,7 +364,7 @@ The research package is now ready for:
     - Up to 600 candidates per pass (`MAXCAND=600`)
     - Early termination when a pass produces no new decodes
 
-15. **Research package fully decoupled** — As of 2026-04-12, all 16 research
+15. **Research package fully decoupled** — As of 2026-04-12, all 17 research
     library files have been ported from Fortran or are self-contained. Zero
     production `ft8x` imports remain. The package is ready for independent
     development and measurement.
@@ -366,8 +375,9 @@ The research package is now ready for:
     type alias for `Candidate` (from `sync8.go`) since they have identical fields.
     `ResetProdDS` and `prodDS` (production scaffolding) were removed. The SNR computation
     uses tone-ratio only (no `xbase` from `sbase`, since `s8` is local to `DecodeSingle`
-    and not available in `DecodeIterative`). AP is CQ-only (`iaptype=1`); AP types ≥2
-    would require porting `ft8apset`/`pack77`, deferred until needed.
+    and not available in `DecodeIterative`). AP types 1-6 are structurally wired;
+    `ComputeAPSymbols` computes the ±1 `apsym` array from `params.MyCall`/`params.DxCall`
+    via `pack28`. Guards skip iaptype≥2 if mycall unknown, iaptype≥3 if dxcall unknown.
 
 17. **`fft.go` ported — pure Go mixed-radix FFT** — The Fortran `four2a.f90` is a thin
     FFTW wrapper with no algorithm to port. The research `fft.go` implements a recursive
@@ -376,7 +386,19 @@ The research package is now ready for:
     conjugate trick. The recursive implementation allocates O(n log n) memory — acceptable
     for Phase 1; can be optimized to iterative Stockham in Phase 2 if needed.
 
-18. **`SubtractFT8FFT` removed** — The production codebase had two subtraction
+18. **`decode.go` review fixes (2026-04-12)** — Line-by-line comparison against
+    `ft8b.f90` and `ft8_decode.f90` found and fixed:
+    - **maxosd for ndepth=3**: was incorrectly set to 0 (should be 2). The Fortran
+      uses sequential `if` statements, not if-else — `maxosd=2` is the default and
+      stays at 2 for ndepth=3 unconditionally. This was the Cap 2 regression cause
+      (9→10 recovered).
+    - **Early termination**: `prevPassDecodes` tracking was broken; pass 3 never
+      properly checked if pass 2 added decodes.
+    - **DT -0.5 display adjustment**: `ft8_decode.f90:210` subtracts 0.5 from xdt
+      after ft8b returns (display only, not subtraction). Added to DecodeIterative.
+    - **sbase retained**: Sync8 `sbase` is now kept for future xbase-based SNR.
+
+19. **`SubtractFT8FFT` removed** — The production codebase had two subtraction
     variants (`SubtractFT8` per-symbol and `SubtractFT8FFT` FFT-based). The Fortran
     source (`subtractft8.f90`) contains only the FFT-based method. The research
     package now has a single `SubtractFT8` ported faithfully from Fortran. The
