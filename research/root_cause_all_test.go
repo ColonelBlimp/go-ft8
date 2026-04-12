@@ -11,7 +11,7 @@
 //   dt_miss        — Sync8 returns wrong DT; correct DT does decode
 //
 // This test does NOT modify production code. It uses the research pipeline
-// (research sync8 + DecodeSingle + SubtractFT8FFT) to diagnose.
+// (research sync8 + DecodeSingle + SubtractFT8) to diagnose.
 
 package research
 
@@ -245,7 +245,7 @@ func analyseCapture(t *testing.T, cap captureSpec) {
 				snr: result.SNR, tones: result.Tones, pass: ipass,
 			})
 
-			SubtractFT8FFT(ddWork, result.Tones, result.Freq, result.DT)
+			SubtractFT8(ddWork, result.Tones, result.Freq, result.DT)
 		}
 		t.Logf("Pass %d: %d new decodes (total: %d, ndeep=%d, cands=%d)",
 			ipass, passDecodes, ndecodes, ndeep, len(ft8xCands))

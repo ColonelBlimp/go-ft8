@@ -185,27 +185,11 @@ func TestSubtractionQuality(t *testing.T) {
 		energyAfterSimple += r*r + im*im
 	}
 
-	// Subtract using FFT method
-	ddAfterFFT := make([]float32, NMAX)
-	copy(ddAfterFFT, ddNorm)
-	SubtractFT8FFT(ddAfterFFT, target4S6.Tones, target4S6.Freq, target4S6.DT)
-
-	ds932f := NewDownsampler()
-	newdat = true
-	cd0AfterFFT := ds932f.Downsample(ddAfterFFT, &newdat, 932.0)
-	energyAfterFFT := 0.0
-	for _, z := range cd0AfterFFT {
-		r, im := real(z), imag(z)
-		energyAfterFFT += r*r + im*im
-	}
-
 	t.Logf("")
 	t.Logf("Energy at 932 Hz baseband (CQ CO8LY FL20 frequency):")
 	t.Logf("  Before 4S6ARW subtraction:     %.4e", energyBefore)
-	t.Logf("  After SubtractFT8 (per-sym):   %.4e  (%.1f%% remaining)",
+	t.Logf("  After SubtractFT8:             %.4e  (%.1f%% remaining)",
 		energyAfterSimple, 100*energyAfterSimple/energyBefore)
-	t.Logf("  After SubtractFT8FFT:          %.4e  (%.1f%% remaining)",
-		energyAfterFFT, 100*energyAfterFFT/energyBefore)
 
 	// Also measure at 938 Hz (the 4S6ARW signal itself)
 	ds938 := NewDownsampler()
@@ -226,35 +210,19 @@ func TestSubtractionQuality(t *testing.T) {
 		energy938AfterS += r*r + im*im
 	}
 
-	ds938f := NewDownsampler()
-	newdat = true
-	cd0_938AfterF := ds938f.Downsample(ddAfterFFT, &newdat, 938.0)
-	energy938AfterF := 0.0
-	for _, z := range cd0_938AfterF {
-		r, im := real(z), imag(z)
-		energy938AfterF += r*r + im*im
-	}
-
 	t.Logf("")
 	t.Logf("Energy at 938 Hz baseband (4S6ARW signal itself):")
 	t.Logf("  Before subtraction:            %.4e", energy938Before)
-	t.Logf("  After SubtractFT8 (per-sym):   %.4e  (%.1f%% remaining)",
+	t.Logf("  After SubtractFT8:             %.4e  (%.1f%% remaining)",
 		energy938AfterS, 100*energy938AfterS/energy938Before)
-	t.Logf("  After SubtractFT8FFT:          %.4e  (%.1f%% remaining)",
-		energy938AfterF, 100*energy938AfterF/energy938Before)
 
 	// Try decoding CO8LY on the cleaned audio
 	t.Logf("")
 	t.Logf("── Attempting to decode CQ CO8LY FL20 on cleaned audio ──")
-	for _, label := range []string{"SubtractFT8", "SubtractFT8FFT"} {
-		var ddClean []float32
-		if label == "SubtractFT8" {
-			ddClean = ddAfterSimple
-		} else {
-			ddClean = ddAfterFFT
-		}
-
+	{
+		ddClean := ddAfterSimple
 		dsC := NewDownsampler()
+		label := "SubtractFT8"
 		for _, f := range []float64{930, 931, 932, 933, 934} {
 			for _, dt := range []float64{0.2, 0.4, 0.6, 0.7, 0.8, 1.0, 1.2} {
 				r, ok := DecodeSingle(ddClean, dsC, f, dt, true, params)

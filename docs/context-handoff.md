@@ -1,6 +1,6 @@
 # Context Handoff — go-ft8 Phase 1
 
-**Date:** 2026-04-11
+**Date:** 2026-04-12
 **Module:** `github.com/ColonelBlimp/go-ft8`
 **Go version:** 1.25
 **Total code:** ~7,100 lines across 24 Go files (+ ~4,200 lines in `research/`)
@@ -75,8 +75,8 @@ verified in isolation before composing:
 | 5 | `ldpc_parity.go` | `LDPCMn`, `LDPCNm`, `LDPCNrw`, generator hex | `ldpc_174_91_c_parity.f90` | ✅ Ported |
 | 6 | `message.go` | `Unpack77()`, `BitsToC77()`, `unpack28()`, grid helpers | `packjt77.f90` | ✅ Ported |
 | 7 | `ap.go` | `ApplyAP()` | `ft8b.f90:243–401` | ✅ Ported (ncontest=0 only, 2026-04-12) |
-| 8 | `encode.go` | `GenFT8Tones()`, `GenFT8CWave()` | `gen_ft8.f90` | TODO |
-| 9 | `subtract.go` | `SubtractFT8()`, `SubtractFT8FFT()` | `subtractft8.f90` | TODO |
+| 8 | `encode.go` | `GenFT8Tones()`, `GenFT8CWave()`, `gfskPulse()` | `genft8.f90`, `gen_ft8wave.f90`, `gfsk_pulse.f90` | ✅ Ported |
+| 9 | `subtract.go` | `SubtractFT8()` | `subtractft8.f90` | ✅ Ported |
 | 10 | `decode.go` | `DecodeSingle()`, `DecodeIterative()`, `Sync8FindCandidates()` | `ft8b.f90`, `ft8_decode.f90`, `sync8.f90` | TODO |
 | 11 | `fft.go` | `FFT()`, `IFFT()` | `four2a.f90` | TODO (delegates to production) |
 | 12 | `realfft.go` | `RealFFT()` | N/A (optimized N/2-point trick) | ✅ Already local (uses local `FFT()`) |
@@ -252,13 +252,13 @@ now call local functions; stub files delegate to production only until ported.
 | `message.go` | ~785 | `packjt77.f90` | `Unpack77()`, `BitsToC77()`, `unpack28()`, `unpacktext77()`, grid helpers |
 | `downsample.go` | 221 | `ft8_downsample.f90`, `twkfreq1.f90` | `Downsampler`, `NewDownsampler()`, `Downsample()`, `TwkFreq1()`, `cshift()` |
 | `ap.go` | 140 | `ft8b.f90:300–401` | `ApplyAP()`, mcq/mrrr/m73/mrr73 constants (ncontest=0 only) |
+| `encode.go` | ~130 | `genft8.f90`, `gen_ft8wave.f90`, `gfsk_pulse.f90` | `GenFT8Tones()`, `GenFT8CWave()`, `gfskPulse()` |
+| `subtract.go` | ~130 | `subtractft8.f90` | `SubtractFT8()` (FFT-based LPF method, `lrefinedt=false` path) |
 
 **Stub files (delegate to production, TODO port from Fortran):**
 
 | File | Lines | Fortran source | Functions stubbed |
 |---|---|---|---|
-| `encode.go` | 29 | `gen_ft8.f90` | `GenFT8Tones()`, `GenFT8CWave()` |
-| `subtract.go` | 32 | `subtractft8.f90` | `SubtractFT8()`, `SubtractFT8FFT()` |
 | `decode.go` | 66 | `ft8b.f90`, `ft8_decode.f90`, `sync8.f90` | `DecodeSingle()`, `DecodeIterative()`, `Sync8FindCandidates()` |
 | `fft.go` | 32 | `four2a.f90` | `FFT()`, `IFFT()` |
 
@@ -295,9 +295,9 @@ ports, working up the call chain:
 5. ~~`ldpc_parity.go` — `LDPCMn`, `LDPCNm`, `LDPCNrw`, generator hex~~ ✅
 6. ~~`message.go` — `Unpack77()`, `BitsToC77()`~~ ✅
 7. ~~`ap.go` — `ApplyAP()`~~ ✅ (ncontest=0 only, 2026-04-12)
-8. **`encode.go`** — `GenFT8Tones()`, `GenFT8CWave()` ← NEXT
-9. **`subtract.go`** — `SubtractFT8()`, `SubtractFT8FFT()`
-10. **`decode.go`** — `DecodeSingle()`, `DecodeIterative()`
+8. ~~`encode.go` — `GenFT8Tones()`, `GenFT8CWave()`, `gfskPulse()`~~ ✅ (2026-04-12)
+9. ~~`subtract.go` — `SubtractFT8()`~~ ✅ (2026-04-12, `SubtractFT8FFT` removed — no Fortran equivalent)
+10. **`decode.go`** — `DecodeSingle()`, `DecodeIterative()`, `Sync8FindCandidates()` ← NEXT
 
 Once all stubs are ported, the research package will be **fully self-contained**
 with zero production imports, and every line traceable to the Fortran source.
@@ -322,7 +322,11 @@ At that point we can:
 
 1. **Production is frozen** — No changes to production `ft8x` package until a research change is proven across all 3 captures. All experimental work in `research/`.
 
-2. **`SubtractFT8` vs `SubtractFT8FFT`** — Two subtraction implementations coexist. `SubtractFT8` (per-symbol, ~2 ms, no FFTs) is used in production `DecodeIterative`. `SubtractFT8FFT` (FFT-based, faithful Fortran port) is used in the research pipeline. Switching production to `SubtractFT8FFT` was tested and caused a **−1 regression** in Capture 1 (KB7THX WB9VGJ RR73 lost at nsync=6 boundary), so production stays with `SubtractFT8`.
+2. **`SubtractFT8` in research vs production** — Production has two subtraction
+   variants (`SubtractFT8` per-symbol and `SubtractFT8FFT` FFT-based). The research
+   package has a single `SubtractFT8` ported faithfully from Fortran `subtractft8.f90`
+   (FFT-based LPF method, `lrefinedt=false` path). The production per-symbol variant
+   has no Fortran equivalent.
 
 3. **Research pipeline is currently ≤ production** — The research iterative pipeline (root_cause_all_test.go) gets 7/10/16 vs production's 8/11/16. This must be resolved before research improvements can be meaningfully measured.
 
@@ -353,12 +357,19 @@ At that point we can:
     - All passes: `basebandTimeScan` retry for `SyncPower ≥ 2.0` candidates that fail on first attempt
     - Early termination when a pass produces no new decodes
 
-15. **Research package decoupling progress** — As of 2026-04-12, 12 of 12 research
+15. **Research package decoupling progress** — As of 2026-04-12, 14 of 16 research
     library files have been ported from Fortran or are self-contained:
     `sync_d.go`, `metrics.go`, `downsample.go`, `ap.go`, `sync8.go`, `realfft.go`,
-    `params.go`, `constants.go`, `ldpc.go`, `ldpc_parity.go`, `crc.go`, `message.go`.
-    The remaining 4 stub files (`encode.go`, `subtract.go`, `decode.go`, `fft.go`)
+    `params.go`, `constants.go`, `ldpc.go`, `ldpc_parity.go`, `crc.go`, `message.go`,
+    `encode.go`, `subtract.go`.
+    The remaining 2 stub files (`decode.go`, `fft.go`)
     still delegate to production `ft8x` and will be replaced one at a time.
+
+16. **`SubtractFT8FFT` removed** — The production codebase had two subtraction
+    variants (`SubtractFT8` per-symbol and `SubtractFT8FFT` FFT-based). The Fortran
+    source (`subtractft8.f90`) contains only the FFT-based method. The research
+    package now has a single `SubtractFT8` ported faithfully from Fortran. The
+    `SubtractFT8FFT` name was removed; all test callers updated to use `SubtractFT8`.
 
 ---
 
