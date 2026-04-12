@@ -1,0 +1,15 @@
+# Compiled Fortran binaries (link GPLv3 code — do not distribute)
+dump_bmet
+dump_sync8
+dump_pass1
+dump_llr
+dump_llr_hp
+dump_osd_order
+dump_osd_trace
+dump_gen
+
+# Fortran module files
+*.mod
+
+# Generated data files
+llr_cand9.txt

@@ -6,7 +6,7 @@
 
 program dump_pass1
 
-  include '../../wsjt-wsjtx-include/ft8_params.f90'
+  include '~/Development/wsjt-wsjtx/lib/ft8/ft8_params.f90'
 
   integer MAXCAND
   parameter (MAXCAND=600)

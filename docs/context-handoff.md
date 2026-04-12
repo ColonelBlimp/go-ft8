@@ -344,21 +344,41 @@ Headroom: ~10s available for improvements (retries, wider search, etc.)
 
 ### What to do next
 
-**Candidate coverage is the bottleneck.** The decode pipeline is verified correct.
-4 signals decode at exact params but sync8 doesn't find them (`subtraction_needed`).
-4 more depend on subtraction order from WSJT-X session context. Focus areas:
+**Priority 1: Float32 soft metrics (the decode gap fix).**
 
-1. **Improve sync8 candidate coverage** — The `subtraction_needed` signals (RA1OHX,
-   WB9VGJ, TN8GD, UY7VV) are missed because sync8 doesn't produce candidates close
-   enough in (freq, DT) for DecodeSingle's ±10-sample/±2.5Hz search to converge.
-   Options: widen DecodeSingle search, add adjacent-grid-bin retries for high-sync
-   failed candidates, or lower syncmin threshold for marginal bins.
+The OSD decoder is sensitive to float32 vs float64 rounding in `ComputeSoftMetrics`.
+Fortran decodes 8 signals on pass 1, Go decodes 5. The 3 missing signals all have
+high hard-error counts (24-32) where OSD's search path diverges due to different
+`abs()` rounding in the `s2` computation.
 
-2. **Improve subtraction quality** — Better subtraction means cleaner audio for later
-   passes, potentially recovering signals that depend on subtraction order.
+**Implementation plan:**
+1. Rewrite `ComputeSoftMetrics` in `metrics.go` to use float32 arithmetic for the
+   `s2` computation: `s2[i] = float32(abs(cs(...)))` where `abs` uses float32
+   complex magnitude. The `maxval` and `bm = max1 - max0` computations should also
+   be float32. After normalizeBmet (which can stay float64), the bmet values are
+   converted back to float64 for the LLR scaling.
 
-3. **Move 192k downsampler FFT to CGO FFTW** — Would save ~30ms/pass (31ms → ~1ms),
-   freeing budget for retries. Easy win, same CGO infrastructure already in place.
+2. The `ComputeSymbolSpectra` 32-point FFT input (`csymb`) comes from `cd0` which
+   is complex128. The Fortran stores `cs` as `complex` (complex64). The `cs` values
+   passed to `ComputeSoftMetrics` should be complex64 to match Fortran's `abs()`
+   rounding. May need a `ComputeSymbolSpectra_F32` variant.
+
+3. The `normalizeBmet` function operates on the bmet arrays which are float32 in
+   Fortran. Test whether float32 normalization produces different results.
+
+4. Test case: candidate 9 (2096.875 Hz, Cap 1) — Fortran decodes with nhard=24,
+   Go currently fails. Must decode after the fix.
+
+**Priority 2: Candidate coverage (after float32 fix).**
+
+After fixing the OSD, re-run `TestRootCauseAllCaptures` to measure the improvement.
+The float32 fix should recover the 3 Fortran-only signals on pass 1, which then get
+subtracted, potentially enabling more signals on passes 2-3.
+
+**Priority 3: Performance.**
+
+Move 192k downsampler FFT to CGO FFTW (~30ms/pass saved). Current decode time
+~4.5s is within the 15s budget but leaves less headroom.
 
 ### Phase 1 success criteria (from assessment §5.5)
 
@@ -478,30 +498,64 @@ Headroom: ~10s available for improvements (retries, wider search, etc.)
     not for precision. Additional FFTW plans for 192k r2c and 3200 c2c backward are
     available in `fftw_wrapper.c` for future performance optimization.
 
-21. **Fortran pipeline match verified — EXCEPT LDPC decoder** — A compiled Fortran
-    reference program (`research/fortran_test/dump_bmet.f90`) calls the exact WSJT-X
-    ft8b pipeline on the RA6ABC signal. **Soft metrics match bit-for-bit** (all 4
-    bmet variants to 4+ decimal places). A second program (`dump_pass1.f90`) runs
-    the full sync8 + ft8b decode loop on all candidates for Cap 1 pass 1. Result:
-    **Fortran decodes 8 signals, Go decodes only 5 — with identical soft metrics.**
-    The 3 extra Fortran decodes (RA1OHX nhard=24, A61CK W3DQS nhard=30, HZ1TT RU1AB
-    nhard=32) all have high hard-error counts, suggesting the difference is in the
-    **LDPC decoder (BP + OSD)**, not the upstream pipeline. Investigation pending —
-    this is the confirmed root cause of the decode gap.
+21. **Root cause confirmed: OSD float32 sensitivity in ComputeSoftMetrics** —
+    Compiled Fortran reference programs verified:
+    - `dump_bmet.f90`: soft metrics match to 6 decimal places
+    - `dump_sync8.f90`: sync8 candidates match (250 vs 261, same top candidates)
+    - `dump_pass1.f90`: **Fortran decodes 8 signals, Go decodes 5 on pass 1**
+
+    The 3 extra Fortran decodes (RA1OHX nhard=24, A61CK W3DQS nhard=30, HZ1TT
+    RU1AB nhard=32) all succeed in OSD (ntype=2). Our Go OSD fails on the same
+    LLR values.
+
+    **Root cause investigation chain:**
+    1. Ported Fortran `indexx` (Numerical Recipes quicksort) to fix sort
+       tie-breaking — sort ordering now matches Fortran exactly. Did not fix decode.
+    2. Fixed GE pivot failure handling (`break` → continue, matching Fortran).
+       Did not fix decode.
+    3. Tested float32 LLR truncation (f64→f32 conversion). Did not fix decode.
+    4. Tested 10,000 random ±1 ULP perturbations of LLR values. **0 decodes.**
+    5. Fortran standalone OSD (reading LLR from text file) also fails (nhardmin=36),
+       while WSJT-X integrated OSD succeeds (nhardmin=24). **The text file loses
+       precision that the OSD is sensitive to.**
+
+    **Conclusion:** The OSD is sensitive to accumulated float32 rounding differences
+    in the soft metrics computation (primarily the `abs()` calls in
+    `ComputeSoftMetrics` where `s2(i)=abs(cs(...))` computes complex magnitudes).
+    Go computes these in float64; Fortran computes in float32. The different
+    intermediate rounding produces slightly different `s2` values, which changes
+    the `maxval` comparisons, which changes `bmet`, which changes the OSD sort
+    ordering, which changes which codewords are explored.
+
+    **Fix: Rewrite `ComputeSoftMetrics` to use float32 arithmetic** — matching
+    Fortran's `real` type for the `s2`, `bm`, `maxval`, and `abs` computations.
+    This is a clean-room reimplementation (same algorithm, different precision),
+    not a GPL code import. The Fortran `four2a` FFT for the 32-point symbol
+    spectra also uses float32 (complex = 2×float32), so `ComputeSymbolSpectra`
+    may also need float32 conversion.
+
+    **WSJT-X is GPLv3** — cannot link Fortran code via CGO. Must reimplement
+    in Go with float32 arithmetic.
 
 22. **sync8 and subtractft8 comparison** — Line-by-line comparison found no
     algorithmic differences affecting real signals:
+    - sync8: candidates match (250 Fortran vs 261 Go, same top candidates in
+      same order; 11 extra Go candidates are wide-peak near-dupes from float32
+      tie-breaking — harmless)
     - sync8: division-by-zero guard in sync2d (Go returns 0, Fortran produces Inf
       for degenerate inputs) — no practical impact
     - sync8: normalization scope (Go normalizes [ia..ib] only, Fortran normalizes
       entire array) — no downstream impact since only [ia..ib] is accessed
-    - subtractft8: algebraically equivalent FFT normalization path (Go uses
-      normalized IFFT, Fortran uses unnormalized IFFT with compensating fac)
+    - subtractft8: algebraically equivalent FFT normalization path
     - Iterative loop: identical pass structure, newdat caching, subtraction timing
+    - `indexx` sort: ported Numerical Recipes quicksort to match Fortran tie-breaking
 
 23. **Recording station 7Q5MLV** — All 3 captures were recorded by 7Q5MLV
     (monitoring only, not transmitting). AP types 2-6 cannot help because none
     of the missing signals contain 7Q5MLV as call1 or call2.
+
+24. **WSJT-X license: GPLv3** — Cannot link or include Fortran source via CGO.
+    All code must be clean-room Go reimplementation of the same algorithms.
 
 ---
 

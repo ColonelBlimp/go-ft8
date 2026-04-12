@@ -403,9 +403,9 @@ func osdDecode(llr [LDPCn]float64, keff int, apmask [LDPCn]int8, ndeep int) ([LD
 				break
 			}
 		}
-		if !found {
-			break
-		}
+		// Fortran: if no pivot found for this diagonal, continues to next id
+		// (does NOT break out of the outer loop).
+		_ = found
 	}
 
 	// osd174_91.f90 line 109: g2 = transpose(genmrb)
@@ -779,21 +779,83 @@ func nextpat91(mi []int8, k, iorder int) int {
 	return -1
 }
 
-// argsortAsc returns indices that sort vals in ascending order.
-// This matches Fortran's indexx subroutine.
-func argsortAsc(vals []float64) []int {
-	n := len(vals)
-	idx := make([]int, n)
-	for i := range idx {
-		idx[i] = i
+// argsortAsc returns indices that sort arr[0..n-1] in ascending order.
+//
+// Uses a standard quicksort with median-of-three pivot selection and
+// insertion sort for small partitions (threshold=7). This is an unstable
+// sort — equal elements may be reordered.
+//
+// The OSD decoder is sensitive to the sort ordering for equal-valued
+// elements. Once ComputeSoftMetrics uses float32 arithmetic (matching
+// the Fortran pipeline), the tied values will match and the specific
+// unstable sort behaviour will not affect decode results.
+func argsortAsc(arr []float64) []int {
+	n := len(arr)
+	indx := make([]int, n)
+	for i := range indx {
+		indx[i] = i
 	}
-	// Insertion sort — n=174 so quadratic is fine.
-	for i := 1; i < n; i++ {
-		j := i
-		for j > 0 && vals[idx[j-1]] > vals[idx[j]] {
-			idx[j-1], idx[j] = idx[j], idx[j-1]
+	qsortIndx(arr, indx, 0, n-1)
+	return indx
+}
+
+// qsortIndx sorts indx[lo..hi] by arr values in ascending order.
+// Standard quicksort with median-of-three pivot and insertion sort cutoff.
+func qsortIndx(arr []float64, indx []int, lo, hi int) {
+	const insertThreshold = 7
+
+	for hi-lo >= insertThreshold {
+		// Median-of-three pivot selection
+		mid := (lo + hi) / 2
+		if arr[indx[mid]] < arr[indx[lo]] {
+			indx[lo], indx[mid] = indx[mid], indx[lo]
+		}
+		if arr[indx[hi]] < arr[indx[lo]] {
+			indx[lo], indx[hi] = indx[hi], indx[lo]
+		}
+		if arr[indx[mid]] < arr[indx[hi]] {
+			indx[mid], indx[hi] = indx[hi], indx[mid]
+		}
+		// Pivot is now at indx[hi]
+		pivot := arr[indx[hi]]
+
+		i := lo
+		j := hi - 1
+		for {
+			for i <= j && arr[indx[i]] < pivot {
+				i++
+			}
+			for j >= i && arr[indx[j]] > pivot {
+				j--
+			}
+			if i >= j {
+				break
+			}
+			indx[i], indx[j] = indx[j], indx[i]
+			i++
 			j--
 		}
+		indx[i], indx[hi] = indx[hi], indx[i]
+
+		// Recurse on smaller partition, iterate on larger
+		if i-lo < hi-i {
+			qsortIndx(arr, indx, lo, i-1)
+			lo = i + 1
+		} else {
+			qsortIndx(arr, indx, i+1, hi)
+			hi = i - 1
+		}
 	}
-	return idx
+
+	// Insertion sort for small partitions
+	for i := lo + 1; i <= hi; i++ {
+		t := indx[i]
+		v := arr[t]
+		j := i - 1
+		for j >= lo && arr[indx[j]] > v {
+			indx[j+1] = indx[j]
+			j--
+		}
+		indx[j+1] = t
+	}
 }
