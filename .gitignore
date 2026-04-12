@@ -7,3 +7,8 @@
 /goft8/
 /jtdx/
 /wsjt-wsjtx/
+
+# Fortran-generated test artifacts (produced by GPL programs — do not distribute)
+*.bin
+llr_cand9.txt
+*.mod

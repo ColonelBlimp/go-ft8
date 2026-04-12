@@ -350,7 +350,11 @@ func osdDecode(llr [LDPCn]float64, keff int, apmask [LDPCn]int8, ndeep int) ([LD
 	gen := osdFullGenerator(keff)
 
 	// osd174_91.f90 lines 67–68: rx = llr, apmaskr = apmask
-	rx := llr
+	// Fortran uses float32 (real) throughout — truncate to match.
+	var rx [n]float64
+	for i := 0; i < n; i++ {
+		rx[i] = float64(float32(llr[i]))
+	}
 	apmaskr := apmask
 
 	// osd174_91.f90 lines 71–72: hard decisions.
@@ -362,9 +366,11 @@ func osdDecode(llr [LDPCn]float64, keff int, apmask [LDPCn]int8, ndeep int) ([LD
 	}
 
 	// osd174_91.f90 lines 75–76: sort by decreasing |LLR| (reliability).
+	// Fortran sorts float32 absrx values. Truncate to float32 before sorting
+	// to ensure identical tie-breaking (42 tied groups exist in typical LLRs).
 	absrx := make([]float64, n)
 	for i := range absrx {
-		absrx[i] = math.Abs(rx[i])
+		absrx[i] = float64(float32(math.Abs(rx[i])))
 	}
 	indx := argsortAsc(absrx) // indx[0]=least reliable
 
@@ -781,81 +787,95 @@ func nextpat91(mi []int8, k, iorder int) int {
 
 // argsortAsc returns indices that sort arr[0..n-1] in ascending order.
 //
-// Uses a standard quicksort with median-of-three pivot selection and
-// insertion sort for small partitions (threshold=7). This is an unstable
-// sort — equal elements may be reordered.
-//
-// The OSD decoder is sensitive to the sort ordering for equal-valued
-// elements. Once ComputeSoftMetrics uses float32 arithmetic (matching
-// the Fortran pipeline), the tied values will match and the specific
-// unstable sort behaviour will not affect decode results.
+// Numerical Recipes quicksort with insertion sort for small partitions
+// (threshold M=7). The OSD decoder is sensitive to the exact tie-breaking
+// order of this sort — the algorithm must match the Fortran implementation
+// to produce identical decode results for marginal signals.
 func argsortAsc(arr []float64) []int {
+	const (
+		m      = 7
+		nstack = 50
+	)
 	n := len(arr)
 	indx := make([]int, n)
 	for i := range indx {
 		indx[i] = i
 	}
-	qsortIndx(arr, indx, 0, n-1)
-	return indx
-}
 
-// qsortIndx sorts indx[lo..hi] by arr values in ascending order.
-// Standard quicksort with median-of-three pivot and insertion sort cutoff.
-func qsortIndx(arr []float64, indx []int, lo, hi int) {
-	const insertThreshold = 7
+	jstack := 0
+	l := 0
+	ir := n - 1
+	istack := make([]int, nstack)
 
-	for hi-lo >= insertThreshold {
-		// Median-of-three pivot selection
-		mid := (lo + hi) / 2
-		if arr[indx[mid]] < arr[indx[lo]] {
-			indx[lo], indx[mid] = indx[mid], indx[lo]
-		}
-		if arr[indx[hi]] < arr[indx[lo]] {
-			indx[lo], indx[hi] = indx[hi], indx[lo]
-		}
-		if arr[indx[mid]] < arr[indx[hi]] {
-			indx[mid], indx[hi] = indx[hi], indx[mid]
-		}
-		// Pivot is now at indx[hi]
-		pivot := arr[indx[hi]]
-
-		i := lo
-		j := hi - 1
-		for {
-			for i <= j && arr[indx[i]] < pivot {
-				i++
+	for {
+		if ir-l < m {
+			// Insertion sort for small partitions.
+			for j := l + 1; j <= ir; j++ {
+				indxt := indx[j]
+				a := arr[indxt]
+				i := j - 1
+				for i >= l {
+					if arr[indx[i]] <= a {
+						break
+					}
+					indx[i+1] = indx[i]
+					i--
+				}
+				indx[i+1] = indxt
 			}
-			for j >= i && arr[indx[j]] > pivot {
-				j--
+			if jstack == 0 {
+				return indx
 			}
-			if i >= j {
-				break
-			}
-			indx[i], indx[j] = indx[j], indx[i]
-			i++
-			j--
-		}
-		indx[i], indx[hi] = indx[hi], indx[i]
-
-		// Recurse on smaller partition, iterate on larger
-		if i-lo < hi-i {
-			qsortIndx(arr, indx, lo, i-1)
-			lo = i + 1
+			ir = istack[jstack-1]
+			l = istack[jstack-2]
+			jstack -= 2
 		} else {
-			qsortIndx(arr, indx, i+1, hi)
-			hi = i - 1
-		}
-	}
+			k := (l + ir) / 2
+			indx[k], indx[l+1] = indx[l+1], indx[k]
 
-	// Insertion sort for small partitions
-	for i := lo + 1; i <= hi; i++ {
-		t := indx[i]
-		v := arr[t]
-		j := i - 1
-		for j >= lo && arr[indx[j]] > v {
-			indx[j+1] = indx[j]
-			j--
+			if arr[indx[l+1]] > arr[indx[ir]] {
+				indx[l+1], indx[ir] = indx[ir], indx[l+1]
+			}
+			if arr[indx[l]] > arr[indx[ir]] {
+				indx[l], indx[ir] = indx[ir], indx[l]
+			}
+			if arr[indx[l+1]] > arr[indx[l]] {
+				indx[l+1], indx[l] = indx[l], indx[l+1]
+			}
+
+			i := l + 1
+			j := ir
+			indxt := indx[l]
+			a := arr[indxt]
+
+			for {
+				// Fortran: 3 continue; i=i+1; if(arr(indx(i)).lt.a) goto 3
+				for i++; arr[indx[i]] < a; i++ {
+				}
+				// Fortran: 4 continue; j=j-1; if(arr(indx(j)).gt.a) goto 4
+				for j--; arr[indx[j]] > a; j-- {
+				}
+				if j < i {
+					break
+				}
+				indx[i], indx[j] = indx[j], indx[i]
+			}
+
+			indx[l] = indx[j]
+			indx[j] = indxt
+			jstack += 2
+			if jstack > nstack {
+				panic("indexx: NSTACK too small")
+			}
+			if ir-i+1 >= j-l {
+				istack[jstack-1] = ir
+				istack[jstack-2] = i
+				ir = j - 1
+			} else {
+				istack[jstack-1] = j - 1
+				istack[jstack-2] = l
+				l = i
+			}
 		}
-		indx[j+1] = t
 	}
 }

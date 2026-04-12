@@ -43,6 +43,26 @@ void fftw_r2c_192k(const float *in, float *out) {
     fftwf_execute_dft_r2c(plan192k, (float *)out, (fftwf_complex *)out);
 }
 
+// ── 32-point c2c forward (symbol spectra) ────────────────────────────────
+
+static fftwf_plan plan32_fw = NULL;
+
+// fftw_c2c_32_forward computes a 32-point c2c forward FFT in single precision,
+// UNNORMALIZED (matching Fortran four2a isign=-1 for symbol spectra).
+//
+// inout: 32 complex float32 values (64 floats), modified in-place.
+//
+// Matches Fortran ft8b.f90:
+//   call four2a(csymb,32,1,-1,1)   ! sfftw c2c forward
+void fftw_c2c_32_forward(float *inout) {
+    if (plan32_fw == NULL) {
+        plan32_fw = fftwf_plan_dft_1d(32, (fftwf_complex *)inout,
+                                       (fftwf_complex *)inout,
+                                       FFTW_FORWARD, FFTW_ESTIMATE);
+    }
+    fftwf_execute_dft(plan32_fw, (fftwf_complex *)inout, (fftwf_complex *)inout);
+}
+
 // ── 3200-point c2c backward (downsampler inverse) ────────────────────────
 
 static fftwf_plan plan3200_bw = NULL;

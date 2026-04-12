@@ -344,39 +344,135 @@ Headroom: ~10s available for improvements (retries, wider search, etc.)
 
 ### What to do next
 
-**Priority 1: Float32 soft metrics (the decode gap fix).**
+**Priority 1: Fix Go OSD decoder — remaining sort precision issue in `osdDecode`.**
 
-The OSD decoder is sensitive to float32 vs float64 rounding in `ComputeSoftMetrics`.
-Fortran decodes 8 signals on pass 1, Go decodes 5. The 3 missing signals all have
-high hard-error counts (24-32) where OSD's search path diverges due to different
-`abs()` rounding in the `s2` computation.
+The OSD bug has been partially fixed and narrowed to a float32/float64 precision
+issue in the reliability sort within `osdDecode` itself. Details below.
 
-**Implementation plan (code locations in `research/metrics.go`):**
+**What has been fixed (2026-04-12 current session, committed to working tree):**
 
-1. `ComputeSoftMetrics` (line 129): Change `s2` from `[]float64` to `[]float32`.
-   Lines 166-178: the `abs(cs(...))` calls compute `math.Sqrt(r*r + im*im)` in
-   float64. Change to float32: cast cs values to complex64 first, then compute
-   magnitude in float32. Lines 202-214: `max1`, `max0` comparisons → float32.
-   Line 215: `bm := max1 - max0` → float32. Lines 227-237: bmetd `cm=bm/den` → float32.
-   The bmet arrays themselves can stay float64 (widened from float32 bm values).
+1. **`argsortAsc` rewritten** — The previous implementation was a standard quicksort
+   with median-of-three pivot, NOT a port of Fortran's `indexx`. This caused
+   different tie-breaking for the 42 tied groups in typical LLR arrays. The function
+   has been rewritten as an exact port of `wsjt-wsjtx/lib/indexx.f90` (Numerical
+   Recipes quicksort with insertion sort for small partitions, M=7, NSTACK=50).
+   Verified: standalone sort order now matches Fortran 0/174 positions.
 
-2. `ComputeSymbolSpectra` (line 35): The Fortran `cs(0:7,k)=csymb(1:8)/1e3` stores
-   as `complex` (complex64). Our `cs[t][k-1] = cx[t] * complex(1e-3, 0)` is complex128.
-   Change to: `cs[t][k-1] = complex128(complex64(cx[t]) * complex64(1e-3+0i))` — do
-   the division in float32 to match Fortran rounding, then widen for storage.
+2. **Float32 truncation added to `osdDecode`** — Two changes in `research/ldpc.go`:
+   - `rx[i] = float64(float32(llr[i]))` — truncates incoming float64 LLR values to
+     float32 precision, matching Fortran's `real rx(N)`.
+   - `absrx[i] = float64(float32(math.Abs(rx[i])))` — truncates absolute values to
+     float32 before sorting, matching Fortran's `real absrx(N)`.
 
-3. `normalizeBmet` (line 267): Fortran uses float32. Test with float32 arithmetic.
-   May need `float32()` casts for `av`, `av2`, `var`, `sig` computations.
+3. **Pre-test bypass removed** — Go line 540 had `|| (iorder == 1 && n1 == iflag)`
+   which is not present in Fortran line 206. Removed to match Fortran exactly.
 
-4. Test case: candidate 9 (2096.875 Hz, Cap 1) — Fortran `dump_pass1` decodes with
-   nhard=24, Go currently fails. Must decode after the fix. Run full
-   `TestRootCauseAllCaptures` to verify improvement (expect 7→8+ on Cap 1).
+4. **FFTW 32-point c2c forward plan added** — `fftw_wrapper.c` now has
+   `fftw_c2c_32_forward()` and `fftw.go` has `FFT32Forward()`, matching the Fortran
+   `four2a(csymb,32,1,-1,1)` call for symbol spectra. Not currently used in the
+   main pipeline but available for testing.
 
-**Priority 2: Candidate coverage (after float32 fix).**
+**What is NOT yet fixed — the remaining divergence:**
 
-After fixing the OSD, re-run `TestRootCauseAllCaptures` to measure the improvement.
-The float32 fix should recover the 3 Fortran-only signals on pass 1, which then get
-subtracted, potentially enabling more signals on passes 2-3.
+The standalone sort test (`TestSortOrderDump`) confirms Go's `argsortAsc` matches
+Fortran's `indexx` exactly (0/174 differences). However, when `osdDecode` runs
+inside `Decode174_91` with real pipeline LLR values (which arrive as float64 from
+`ScaleFac * bmet[i]`), the `genmrb` matrix after column reordering still differs
+from Fortran at rows 89-91 (the last 3 of 91 rows). This causes:
+
+- Order-0: nhardmin=42 (Go) vs 36 (Fortran)
+- Order-1: nhardmin=26 (Go) vs 24 (Fortran), passed=2 (matches)
+- CRC check fails in Go, passes in Fortran
+
+The root cause of the remaining 3-row difference: the LLR values entering
+`osdDecode` are computed as `ScaleFac * float64(bmet[i])` in `DecodeSingle`
+(float64 multiplication), while Fortran computes `scalefac * bmet(i)` (float32
+multiplication). Even though `osdDecode` truncates `rx` to float32, the
+multiplication precision has already produced different float64 values. At the
+42 tied positions, `float32(abs(float64_llr))` can produce different float32
+values than `abs(float32_llr)` because the float64 intermediate is not the
+same as the float32 intermediate.
+
+**Next step to fix:** Change the LLR computation in `DecodeSingle` (or at the
+`osdDecode` entry point) to use float32 multiplication: `float64(float32(ScaleFac) *
+float32(bmet[i]))` instead of `ScaleFac * float64(bmet[i])`. This ensures the
+`rx` values in `osdDecode` are bit-identical to Fortran's. Alternatively, add
+float32 truncation at the `Decode174_91` entry point before passing to `osdDecode`.
+
+**Test infrastructure (in working tree):**
+
+| File | Purpose |
+|---|---|
+| `research/pass1_compare_test.go` | Compares Go vs Fortran pass 1 decode counts; includes LLR comparison and sort order verification |
+| `research/osd_binary_test.go` | Feeds bit-exact Fortran float32 bmet values into Go's `Decode174_91` |
+| `research/osd_trace_test.go` | Step-by-step OSD trace matching `/tmp/dump_osd_trace_bin`; dumps pre/post-GE genmrb for diff |
+| `research/gen_compare_test.go` | Verifies Go and Fortran generator matrices are identical |
+| `bmet_cand9.bin` (repo root) | Fortran binary float32 bmet arrays (4×174×float32 = 2784 bytes) |
+| `llr_cand9.txt` (repo root) | Fortran text LLR values (E20.12 precision) |
+
+**Fortran trace programs (source in `research/fortran_test/`, binaries in `/tmp/`):**
+
+| Binary | Source | Purpose |
+|---|---|---|
+| `dump_pass1_fortran` | `dump_pass1.f90` | Full pass 1 decode (8 signals on Cap 1) |
+| `dump_llr` | `dump_llr.f90` | LLR dump + OSD decode for candidate 9 |
+| `dump_llr_bin` | `/tmp/dump_llr_bin.f90` | Binary bmet/cd0 dump for candidate 9 |
+| `dump_osd_trace_bin` | `/tmp/dump_osd_trace_bin.f90` | OSD step-by-step trace (reads binary bmet) |
+| `dump_ge_indices` | `/tmp/dump_ge_indices.f90` | Post-GE indices dump |
+| `dump_pre_ge` | `/tmp/dump_pre_ge.f90` | Pre-GE genmrb dump |
+| `dump_indices` | `/tmp/dump_indices.f90` | Full sort order dump |
+| `osd_sortcheck` | `/tmp/osd_sortcheck.f90` | Sort verification |
+| `debug_bmet` | `/tmp/dump_osd_trace_bin_debug.f90` | Binary bmet readback check |
+
+**Compile recipe (all programs):**
+```
+cd /tmp
+sed "s|~/Development|$HOME/Development|g" <source.f90> > tmp.f90
+gfortran -O2 -o <binary> tmp.f90 \
+  ~/Development/wsjt-wsjtx/lib/crc.f90 \
+  ~/Development/wsjt-wsjtx/lib/fftw3mod.f90 \
+  ~/Development/wsjt-wsjtx/lib/four2a.f90 \
+  ~/Development/wsjt-wsjtx/lib/ft8/sync8.f90 \
+  ~/Development/wsjt-wsjtx/lib/ft8/sync8d.f90 \
+  ~/Development/wsjt-wsjtx/lib/ft8/ft8_downsample.f90 \
+  ~/Development/wsjt-wsjtx/lib/ft8/twkfreq1.f90 \
+  ~/Development/wsjt-wsjtx/lib/ft8/get_spectrum_baseline.f90 \
+  ~/Development/wsjt-wsjtx/lib/ft8/baseline.f90 \
+  ~/Development/wsjt-wsjtx/lib/nuttal_window.f90 \
+  ~/Development/wsjt-wsjtx/lib/ft8/decode174_91.f90 \
+  ~/Development/wsjt-wsjtx/lib/ft8/osd174_91.f90 \
+  ~/Development/wsjt-wsjtx/lib/ft8/encode174_91_nocrc.f90 \
+  ~/Development/wsjt-wsjtx/lib/ft8/get_crc14.f90 \
+  ~/Development/wsjt-wsjtx/lib/indexx.f90 \
+  ~/Development/wsjt-wsjtx/lib/platanh.f90 \
+  ~/Development/wsjt-wsjtx/lib/pctile.f90 \
+  ~/Development/wsjt-wsjtx/lib/polyfit.f90 \
+  ~/Development/wsjt-wsjtx/lib/shell.f90 \
+  ~/Development/wsjt-wsjtx/lib/determ.f90 \
+  -lfftw3f -lm
+```
+Note: `g++` is not installed; `crc14.cpp` (Boost) can't compile. Use
+`get_crc14.f90` + `crc.f90` (pure Fortran CRC) instead. The `.mod` files
+generated by gfortran must NOT be in `research/fortran_test/` or they break
+`go build` — compile in `/tmp`. Some programs (like `dump_osd_trace_bin`)
+don't need the full sync8/downsample chain — use the shorter link list.
+
+**Verified facts (do not re-investigate):**
+
+- Generator matrices are identical between Go and Fortran (verified by
+  `TestGeneratorCompare` — both parity-matrix-based and encode-based match).
+- Sort algorithm matches Fortran `indexx` exactly (verified by
+  `TestSortOrderDump` — 0/174 position differences).
+- LLR values match to ~1e-6 across all 174 positions and all 4 bmet arrays.
+- Float32 metrics (`ComputeSoftMetrics`, `ComputeSymbolSpectra`) do NOT
+  improve decode counts — the issue is entirely in the OSD decoder.
+- The pre-test bypass (`|| (iorder == 1 && n1 == iflag)`) is not the cause.
+- Float32 distance metrics (`dd`, `dmin` as float32) in OSD are not the cause.
+
+**Priority 2: Measure impact across all captures.**
+
+After OSD fix, the 3 recovered signals on pass 1 get subtracted, potentially
+enabling more signals on passes 2-3. Expect Cap 1: 7→10+.
 
 **Priority 3: Performance.**
 
@@ -419,7 +515,10 @@ Move 192k downsampler FFT to CGO FFTW (~30ms/pass saved). Current decode time
 
 9. **platanh: math.Atanh vs Fortran piecewise** — Retained `math.Atanh` with ±19.07 clamping. The Fortran piecewise-linear `platanh` caused a 1-decode regression because the BP decoder's LLR scaling (`ScaleFac=2.83`) was tuned with `math.Atanh`. May revisit when ScaleFac is re-tuned.
 
-10. **OSD ntheta pre-test bypass for order-1** — For order-1 base patterns (91 candidates), the pre-test is bypassed to avoid marginal-signal regressions. Higher-order patterns use the pre-test for performance.
+10. **OSD ntheta pre-test bypass removed** — The Go code had an extra condition
+    `|| (iorder == 1 && n1 == iflag)` on the pre-test that is NOT in the Fortran
+    (osd174_91.f90 line 206). This was removed (2026-04-12) to match Fortran exactly.
+    The pre-test is now enforced uniformly for all patterns.
 
 11. **AP decoding: ncontest=0, types 1-2 active** — Standard QSO mode only. AP type 1
     (CQ) and type 2 (MyCall) are implemented. Types 3-6 (MyCall+DxCall, +RRR/73/RR73)
@@ -501,44 +600,21 @@ Move 192k downsampler FFT to CGO FFTW (~30ms/pass saved). Current decode time
     not for precision. Additional FFTW plans for 192k r2c and 3200 c2c backward are
     available in `fftw_wrapper.c` for future performance optimization.
 
-21. **Root cause confirmed: OSD float32 sensitivity in ComputeSoftMetrics** —
-    Compiled Fortran reference programs verified:
-    - `dump_bmet.f90`: soft metrics match to 6 decimal places
-    - `dump_sync8.f90`: sync8 candidates match (250 vs 261, same top candidates)
-    - `dump_pass1.f90`: **Fortran decodes 8 signals, Go decodes 5 on pass 1**
+21. **Root cause confirmed: OSD decoder bug in `research/ldpc.go`** —
 
-    The 3 extra Fortran decodes (RA1OHX nhard=24, A61CK W3DQS nhard=30, HZ1TT
-    RU1AB nhard=32) all succeed in OSD (ntype=2). Our Go OSD fails on the same
-    LLR values.
+    **2026-04-12 (previous session) hypothesis:** Float32 rounding in
+    `ComputeSoftMetrics` was suspected. This was **WRONG**.
 
-    **Root cause investigation chain:**
-    1. Ported Fortran `indexx` (Numerical Recipes quicksort) to fix sort
-       tie-breaking — sort ordering now matches Fortran exactly. Did not fix decode.
-    2. Fixed GE pivot failure handling (`break` → continue, matching Fortran).
-       Did not fix decode.
-    3. Tested float32 LLR truncation (f64→f32 conversion). Did not fix decode.
-    4. Tested 10,000 random ±1 ULP perturbations of LLR values. **0 decodes.**
-    5. Fortran standalone OSD (reading LLR from text file) also fails (nhardmin=36),
-       while WSJT-X integrated OSD succeeds (nhardmin=24). **The text file loses
-       precision that the OSD is sensitive to.**
+    **2026-04-12 (current session) — definitive proof and partial fix:**
 
-    **Conclusion:** The OSD is sensitive to accumulated float32 rounding differences
-    in the soft metrics computation (primarily the `abs()` calls in
-    `ComputeSoftMetrics` where `s2(i)=abs(cs(...))` computes complex magnitudes).
-    Go computes these in float64; Fortran computes in float32. The different
-    intermediate rounding produces slightly different `s2` values, which changes
-    the `maxval` comparisons, which changes `bmet`, which changes the OSD sort
-    ordering, which changes which codewords are explored.
+    Fed bit-exact Fortran float32 bmet values into Go's `Decode174_91` → ALL
+    4 passes FAIL. The Fortran OSD decodes with nhard=24 on the same values.
+    **This proves the bug is in Go's `osdDecode`, NOT in LLR precision.**
 
-    **Fix: Rewrite `ComputeSoftMetrics` to use float32 arithmetic** — matching
-    Fortran's `real` type for the `s2`, `bm`, `maxval`, and `abs` computations.
-    This is a clean-room reimplementation (same algorithm, different precision),
-    not a GPL code import. The Fortran `four2a` FFT for the 32-point symbol
-    spectra also uses float32 (complex = 2×float32), so `ComputeSymbolSpectra`
-    may also need float32 conversion.
-
-    **WSJT-X is GPLv3** — cannot link Fortran code via CGO. Must reimplement
-    in Go with float32 arithmetic.
+    The `argsortAsc` function was NOT a faithful port of `indexx.f90` — it was
+    a completely different quicksort. Rewritten as exact port. Float32 truncation
+    of `rx` and `absrx` added. Pre-test bypass removed. Details, test artifacts,
+    compile recipes, and remaining work are in the "Priority 1" section above.
 
 22. **sync8 and subtractft8 comparison** — Line-by-line comparison found no
     algorithmic differences affecting real signals:

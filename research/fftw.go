@@ -16,6 +16,7 @@ package research
 
 extern void fftw_r2c_3840(const float *in, float *out);
 extern void fftw_r2c_192k(const float *in, float *out);
+extern void fftw_c2c_32_forward(float *inout);
 extern void fftw_c2c_3200_backward(float *inout);
 */
 import "C"
@@ -171,4 +172,10 @@ func (d *DownsamplerF32) Downsample(dd []float32, newdat *bool, f0 float64) []co
 	}
 
 	return result
+}
+
+// FFT32Forward computes a 32-point c2c forward FFT using FFTW float32,
+// matching Fortran four2a(csymb,32,1,-1,1) exactly.
+func FFT32Forward(x []complex64) {
+	C.fftw_c2c_32_forward((*C.float)(unsafe.Pointer(&x[0])))
 }
