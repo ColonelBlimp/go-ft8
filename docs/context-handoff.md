@@ -78,7 +78,7 @@ verified in isolation before composing:
 | 8 | `encode.go` | `GenFT8Tones()`, `GenFT8CWave()`, `gfskPulse()` | `genft8.f90`, `gen_ft8wave.f90`, `gfsk_pulse.f90` | ✅ Ported |
 | 9 | `subtract.go` | `SubtractFT8()` | `subtractft8.f90` | ✅ Ported |
 | 10 | `decode.go` | `DecodeSingle()`, `DecodeIterative()`, `Sync8FindCandidates()`, types | `ft8b.f90`, `ft8_decode.f90` | ✅ Ported |
-| 11 | `fft.go` | `FFT()`, `IFFT()`, `fftMixedRadix()` | `four2a.f90` (FFTW wrapper — algorithm is standard mixed-radix Cooley-Tukey) | ✅ Ported |
+| 11 | `fft.go` | `FFT()`, `IFFT()`, `fftMixedRadix()` | `four2a.f90` (FFTW wrapper — algorithm is standard mixed-radix Cooley-Tukey) | ⚠️ Ported (float64 — Fortran uses float32 FFTW `sfftw_*`; see item 20) |
 | 12 | `realfft.go` | `RealFFT()` | N/A (optimized N/2-point trick) | ✅ Already local (uses local `FFT()`) |
 
 ### Key porting notes
@@ -90,8 +90,10 @@ verified in isolation before composing:
 - **`fft.go`** — Recursive mixed-radix Cooley-Tukey FFT with radix-2, radix-3, and
   radix-5 butterflies. All FT8 FFT sizes (192000, 180000, 3200, 1920) are 5-smooth.
   `IFFT()` uses the conjugate trick (conj → FFT → conj → scale). The Fortran
-  `four2a.f90` is a thin FFTW wrapper with no algorithm to port — the FFT is a
-  standard algorithm implementation.
+  `four2a.f90` is a thin FFTW wrapper — it calls `sfftw_*` (single-precision/float32
+  FFTW). Our Go FFT computes in float64, causing ~5% divergence in spectrogram bin
+  magnitudes. A CGO wrapper around `libfftw3f` for the spectrogram path is planned
+  (see item 20 in Known Issues).
 
 - **Test files** (`*_test.go`) have been updated to call local research functions
   instead of `ft8x.*`. No test file imports production code.
@@ -199,10 +201,16 @@ some of these signals.
 | `subtraction_needed` | 2 | Cap2: 2 | Decode OK on original audio at exact params, missed by pipeline candidate search |
 | `sync_fail` | 1 | Cap3: 1 | CQ CO8LY masked by nearby CQ 4S6ARW (6 Hz separation), genuinely at noise floor |
 
-**Key finding:** The dominant gap is AP limitation. 15 of 18 missing signals are non-CQ
-messages that WSJT-X decodes using interactive QSO-progress AP (types 2–6, injecting
-32–77 known bits). Our CQ-only AP (type 1, 32 bits) can't help these. The pipeline is
-numerically correct — the gap is NOT a Go vs Fortran precision issue.
+**Key findings:**
+
+1. **AP limitation (dominant):** 15 of 18 missing signals are non-CQ messages that
+   WSJT-X decodes using interactive QSO-progress AP (types 2–6, injecting 32–77 known
+   bits). Our CQ-only AP (type 1, 32 bits) can't help these. AP type 2 infrastructure
+   is implemented; testing with `MyCall` set may recover some of these.
+
+2. **FFT precision gap (CQ signals):** Two missing CQ signals (`CQ TN8GD JI75` at
+   450 Hz in Cap 2, `CQ CO8LY FL20` at 932 Hz in Cap 3) are blocked by a float32 vs
+   float64 FFT precision difference. See item 20 in "Known issues" for full details.
 
 ### Production source file inventory
 
@@ -379,12 +387,14 @@ The research package is now ready for:
     `ComputeAPSymbols` computes the ±1 `apsym` array from `params.MyCall`/`params.DxCall`
     via `pack28`. Guards skip iaptype≥2 if mycall unknown, iaptype≥3 if dxcall unknown.
 
-17. **`fft.go` ported — pure Go mixed-radix FFT** — The Fortran `four2a.f90` is a thin
-    FFTW wrapper with no algorithm to port. The research `fft.go` implements a recursive
-    Cooley-Tukey decimation-in-time FFT with radix-2, radix-3, and radix-5 butterflies.
-    All FT8 FFT sizes (192000, 180000, 3200, 1920) are 5-smooth. `IFFT()` uses the
-    conjugate trick. The recursive implementation allocates O(n log n) memory — acceptable
-    for Phase 1; can be optimized to iterative Stockham in Phase 2 if needed.
+17. **`fft.go` ported — pure Go mixed-radix FFT (float64)** — The Fortran `four2a.f90`
+    wraps single-precision FFTW (`sfftw_*`). The research `fft.go` implements a recursive
+    Cooley-Tukey decimation-in-time FFT with radix-2/3/5 butterflies in float64.
+    All FT8 FFT sizes (192000, 180000, 3200, 1920) are 5-smooth. The float64 vs float32
+    precision difference is measurable in the sync8 spectrogram path and causes marginal
+    signals to fall below the `syncmin=1.3` threshold (see item 20). A CGO bridge to
+    `libfftw3f` is planned for the spectrogram path; the pure-Go FFT remains for
+    downsample (192k-point) and other non-spectrogram uses.
 
 18. **`decode.go` review fixes (2026-04-12)** — Line-by-line comparison against
     `ft8b.f90` and `ft8_decode.f90` found and fixed:
@@ -403,6 +413,39 @@ The research package is now ready for:
     source (`subtractft8.f90`) contains only the FFT-based method. The research
     package now has a single `SubtractFT8` ported faithfully from Fortran. The
     `SubtractFT8FFT` name was removed; all test callers updated to use `SubtractFT8`.
+
+20. **FFT precision: float64 Go vs float32 Fortran (spectrogram path)** —
+    Fortran `four2a.f90` calls `sfftw_plan_dft_r2c_1d` — the **single-precision**
+    (float32) FFTW library. Our Go `RealFFT` / `FFT` compute in float64. This causes
+    measurable differences in the sync8 spectrogram power values, which cascade through
+    the 40th-percentile normalization into the candidate sync threshold.
+
+    **Evidence:** For Cap 2, frequency bin 144 (450.0 Hz) — the `CQ TN8GD JI75` signal:
+    - Raw wide-peak sync2d = 2.892, 40th percentile baseline = 2.349
+    - Normalized sync = 2.892 / 2.349 = **1.231**
+    - `syncmin` threshold = **1.300**
+    - Gap = **0.069 (5.3%)** — the candidate is excluded, and TN8GD is never tried
+    - Lowering syncmin to 1.2 recovers TN8GD (confirmed by test), adding only 97 extra
+      candidates (306→403) with no false positives
+
+    **Options evaluated:**
+    1. Lower syncmin from 1.3 to 1.2 — easy but fragile; masks the root cause and
+       different marginal signals on different captures could have different gaps
+    2. **CGO wrapper around `libfftw3f` (single-precision FFTW)** — matches Fortran
+       exactly since it uses the *same library*; scoped to the spectrogram 3840-point
+       r2c FFT only (372 calls per sync8 pass); the 192k-point downsample FFT stays
+       float64. **Selected approach — implementation pending.**
+    3. Truncate spectrogram power values to float32 after the float64 FFT — a shortcut
+       that wouldn't reproduce the intermediate float32 rounding path through the FFT
+       butterfly stages, so results may still differ unpredictably
+
+    **Scope of CGO change:**
+    - One C file: thin wrapper around `fftwf_plan_dft_r2c_1d` + `fftwf_execute`
+    - One Go file: CGO bridge with plan caching (one plan for size 3840, reused)
+    - `computeSpectrogram()` in `sync8.go`: swap `RealFFT(buf, NFFT1)` call for the
+      CGO float32 path
+    - Build dependency: `libfftw3f-dev` (available on all major Linux distros)
+    - The pure-Go `RealFFT`/`FFT` remain available for non-spectrogram paths
 
 ---
 
