@@ -74,7 +74,7 @@ verified in isolation before composing:
 | 4 | `ldpc.go` + `crc.go` | `Decode174_91()`, `BPDecode()`, `OSDDecode()`, CRC-14 | `decode174_91.f90`, `osd174_91.f90` | ✅ Ported |
 | 5 | `ldpc_parity.go` | `LDPCMn`, `LDPCNm`, `LDPCNrw`, generator hex | `ldpc_174_91_c_parity.f90` | ✅ Ported |
 | 6 | `message.go` | `Unpack77()`, `BitsToC77()`, `unpack28()`, grid helpers | `packjt77.f90` | ✅ Ported |
-| 7 | `ap.go` | `ApplyAP()` | `ft8b.f90:243–401` | TODO |
+| 7 | `ap.go` | `ApplyAP()` | `ft8b.f90:243–401` | ✅ Ported (ncontest=0 only, 2026-04-12) |
 | 8 | `encode.go` | `GenFT8Tones()`, `GenFT8CWave()` | `gen_ft8.f90` | TODO |
 | 9 | `subtract.go` | `SubtractFT8()`, `SubtractFT8FFT()` | `subtractft8.f90` | TODO |
 | 10 | `decode.go` | `DecodeSingle()`, `DecodeIterative()`, `Sync8FindCandidates()` | `ft8b.f90`, `ft8_decode.f90`, `sync8.f90` | TODO |
@@ -251,12 +251,12 @@ now call local functions; stub files delegate to production only until ported.
 | `crc.go` | ~50 | `crc14.cpp` | `CRC14Bits()`, `CheckCRC14Codeword()` — CRC-14 for LDPC |
 | `message.go` | ~785 | `packjt77.f90` | `Unpack77()`, `BitsToC77()`, `unpack28()`, `unpacktext77()`, grid helpers |
 | `downsample.go` | 221 | `ft8_downsample.f90`, `twkfreq1.f90` | `Downsampler`, `NewDownsampler()`, `Downsample()`, `TwkFreq1()`, `cshift()` |
+| `ap.go` | 140 | `ft8b.f90:300–401` | `ApplyAP()`, mcq/mrrr/m73/mrr73 constants (ncontest=0 only) |
 
 **Stub files (delegate to production, TODO port from Fortran):**
 
 | File | Lines | Fortran source | Functions stubbed |
 |---|---|---|---|
-| `ap.go` | 21 | `ft8b.f90:243–401` | `ApplyAP()` |
 | `encode.go` | 29 | `gen_ft8.f90` | `GenFT8Tones()`, `GenFT8CWave()` |
 | `subtract.go` | 32 | `subtractft8.f90` | `SubtractFT8()`, `SubtractFT8FFT()` |
 | `decode.go` | 66 | `ft8b.f90`, `ft8_decode.f90`, `sync8.f90` | `DecodeSingle()`, `DecodeIterative()`, `Sync8FindCandidates()` |
@@ -294,8 +294,8 @@ ports, working up the call chain:
 4. ~~`ldpc.go` + `crc.go` — `Decode174_91()`, `BPDecode()`, `OSDDecode()`, CRC-14~~ ✅
 5. ~~`ldpc_parity.go` — `LDPCMn`, `LDPCNm`, `LDPCNrw`, generator hex~~ ✅
 6. ~~`message.go` — `Unpack77()`, `BitsToC77()`~~ ✅
-7. **`ap.go`** — `ApplyAP()` ← NEXT
-8. **`encode.go`** — `GenFT8Tones()`, `GenFT8CWave()`
+7. ~~`ap.go` — `ApplyAP()`~~ ✅ (ncontest=0 only, 2026-04-12)
+8. **`encode.go`** — `GenFT8Tones()`, `GenFT8CWave()` ← NEXT
 9. **`subtract.go`** — `SubtractFT8()`, `SubtractFT8FFT()`
 10. **`decode.go`** — `DecodeSingle()`, `DecodeIterative()`
 
@@ -353,12 +353,12 @@ At that point we can:
     - All passes: `basebandTimeScan` retry for `SyncPower ≥ 2.0` candidates that fail on first attempt
     - Early termination when a pass produces no new decodes
 
-15. **Research package decoupling progress** — As of 2026-04-12, 11 of 12 research
+15. **Research package decoupling progress** — As of 2026-04-12, 12 of 12 research
     library files have been ported from Fortran or are self-contained:
-    `sync_d.go`, `metrics.go`, `downsample.go`, `sync8.go`, `realfft.go`, `params.go`,
-    `constants.go`, `ldpc.go`, `ldpc_parity.go`, `crc.go`, `message.go`. The remaining
-    5 stub files (`ap.go`, `encode.go`, `subtract.go`, `decode.go`, `fft.go`) still
-    delegate to production `ft8x` and will be replaced one at a time.
+    `sync_d.go`, `metrics.go`, `downsample.go`, `ap.go`, `sync8.go`, `realfft.go`,
+    `params.go`, `constants.go`, `ldpc.go`, `ldpc_parity.go`, `crc.go`, `message.go`.
+    The remaining 4 stub files (`encode.go`, `subtract.go`, `decode.go`, `fft.go`)
+    still delegate to production `ft8x` and will be replaced one at a time.
 
 ---
 
