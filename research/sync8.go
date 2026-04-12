@@ -141,16 +141,14 @@ func computeSpectrogram(dd []float32, npts int) *Spectrogram {
 				buf[k] = 0
 			}
 		}
-		// x(NSPS+1:) = 0   — handled by RealFFT zero-padding to NFFT1
-		// call four2a(x,NFFT1,1,-1,0)   — r2c FFT
-		cx := RealFFT(buf, NFFT1) // optimized: N/2-point FFT + unpack (~2× faster)
+		// x(NSPS+1:) = 0   — handled by zero-padding inside SpectrogramFFT3840
+		// call four2a(x,NFFT1,1,-1,0)   — r2c FFT (float32 via FFTW)
+		// s(i,j) = real(cx(i))**2 + aimag(cx(i))**2  — power in float32
+		pow := SpectrogramFFT3840(buf)
 
-		for i := 1; i <= NH1 && i < len(cx); i++ {
-			re := real(cx[i])
-			im := imag(cx[i])
-			pow := re*re + im*im
-			s[i][j] = pow
-			savg[i] += pow
+		for i := 1; i <= NH1; i++ {
+			s[i][j] = pow[i-1]
+			savg[i] += pow[i-1]
 		}
 	}
 
