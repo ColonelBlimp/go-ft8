@@ -351,23 +351,26 @@ Fortran decodes 8 signals on pass 1, Go decodes 5. The 3 missing signals all hav
 high hard-error counts (24-32) where OSD's search path diverges due to different
 `abs()` rounding in the `s2` computation.
 
-**Implementation plan:**
-1. Rewrite `ComputeSoftMetrics` in `metrics.go` to use float32 arithmetic for the
-   `s2` computation: `s2[i] = float32(abs(cs(...)))` where `abs` uses float32
-   complex magnitude. The `maxval` and `bm = max1 - max0` computations should also
-   be float32. After normalizeBmet (which can stay float64), the bmet values are
-   converted back to float64 for the LLR scaling.
+**Implementation plan (code locations in `research/metrics.go`):**
 
-2. The `ComputeSymbolSpectra` 32-point FFT input (`csymb`) comes from `cd0` which
-   is complex128. The Fortran stores `cs` as `complex` (complex64). The `cs` values
-   passed to `ComputeSoftMetrics` should be complex64 to match Fortran's `abs()`
-   rounding. May need a `ComputeSymbolSpectra_F32` variant.
+1. `ComputeSoftMetrics` (line 129): Change `s2` from `[]float64` to `[]float32`.
+   Lines 166-178: the `abs(cs(...))` calls compute `math.Sqrt(r*r + im*im)` in
+   float64. Change to float32: cast cs values to complex64 first, then compute
+   magnitude in float32. Lines 202-214: `max1`, `max0` comparisons → float32.
+   Line 215: `bm := max1 - max0` → float32. Lines 227-237: bmetd `cm=bm/den` → float32.
+   The bmet arrays themselves can stay float64 (widened from float32 bm values).
 
-3. The `normalizeBmet` function operates on the bmet arrays which are float32 in
-   Fortran. Test whether float32 normalization produces different results.
+2. `ComputeSymbolSpectra` (line 35): The Fortran `cs(0:7,k)=csymb(1:8)/1e3` stores
+   as `complex` (complex64). Our `cs[t][k-1] = cx[t] * complex(1e-3, 0)` is complex128.
+   Change to: `cs[t][k-1] = complex128(complex64(cx[t]) * complex64(1e-3+0i))` — do
+   the division in float32 to match Fortran rounding, then widen for storage.
 
-4. Test case: candidate 9 (2096.875 Hz, Cap 1) — Fortran decodes with nhard=24,
-   Go currently fails. Must decode after the fix.
+3. `normalizeBmet` (line 267): Fortran uses float32. Test with float32 arithmetic.
+   May need `float32()` casts for `av`, `av2`, `var`, `sig` computations.
+
+4. Test case: candidate 9 (2096.875 Hz, Cap 1) — Fortran `dump_pass1` decodes with
+   nhard=24, Go currently fails. Must decode after the fix. Run full
+   `TestRootCauseAllCaptures` to verify improvement (expect 7→8+ on Cap 1).
 
 **Priority 2: Candidate coverage (after float32 fix).**
 
