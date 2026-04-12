@@ -26,9 +26,9 @@ into the `research/` sub-package (`/home/mveary/Development/go-ft8/research/`).
    untouched; its tests are irrelevant to research work.
 
 3. **DO NOT import production code** in new research files — the research
-   package still has thin stubs that delegate to `ft8x` for un-ported
-   functions. These are being eliminated one by one. New ports must be
-   self-contained with zero `ft8x` imports.
+   package has one remaining stub (`fft.go`) that delegates to `ft8x`.
+   All other files are fully self-contained. New ports must have zero
+   `ft8x` imports.
 
 4. **Port from Fortran → Go directly.** Read the `.f90` file, write the `.go`
    file. That's the workflow. No detours.
@@ -77,7 +77,7 @@ verified in isolation before composing:
 | 7 | `ap.go` | `ApplyAP()` | `ft8b.f90:243–401` | ✅ Ported (ncontest=0 only, 2026-04-12) |
 | 8 | `encode.go` | `GenFT8Tones()`, `GenFT8CWave()`, `gfskPulse()` | `genft8.f90`, `gen_ft8wave.f90`, `gfsk_pulse.f90` | ✅ Ported |
 | 9 | `subtract.go` | `SubtractFT8()` | `subtractft8.f90` | ✅ Ported |
-| 10 | `decode.go` | `DecodeSingle()`, `DecodeIterative()`, `Sync8FindCandidates()` | `ft8b.f90`, `ft8_decode.f90`, `sync8.f90` | TODO |
+| 10 | `decode.go` | `DecodeSingle()`, `DecodeIterative()`, `Sync8FindCandidates()`, types | `ft8b.f90`, `ft8_decode.f90` | ✅ Ported |
 | 11 | `fft.go` | `FFT()`, `IFFT()` | `four2a.f90` | TODO (delegates to production) |
 | 12 | `realfft.go` | `RealFFT()` | N/A (optimized N/2-point trick) | ✅ Already local (uses local `FFT()`) |
 
@@ -254,12 +254,12 @@ now call local functions; stub files delegate to production only until ported.
 | `ap.go` | 140 | `ft8b.f90:300–401` | `ApplyAP()`, mcq/mrrr/m73/mrr73 constants (ncontest=0 only) |
 | `encode.go` | ~130 | `genft8.f90`, `gen_ft8wave.f90`, `gfsk_pulse.f90` | `GenFT8Tones()`, `GenFT8CWave()`, `gfskPulse()` |
 | `subtract.go` | ~130 | `subtractft8.f90` | `SubtractFT8()` (FFT-based LPF method, `lrefinedt=false` path) |
+| `decode.go` | ~300 | `ft8b.f90`, `ft8_decode.f90` | `DecodeSingle()`, `DecodeIterative()`, `Sync8FindCandidates()`, `DecodeParams`, `DecodeCandidate`, `CandidateFreq` |
 
 **Stub files (delegate to production, TODO port from Fortran):**
 
 | File | Lines | Fortran source | Functions stubbed |
 |---|---|---|---|
-| `decode.go` | 66 | `ft8b.f90`, `ft8_decode.f90`, `sync8.f90` | `DecodeSingle()`, `DecodeIterative()`, `Sync8FindCandidates()` |
 | `fft.go` | 32 | `four2a.f90` | `FFT()`, `IFFT()` |
 
 **Test and diagnostic files:**
@@ -297,9 +297,10 @@ ports, working up the call chain:
 7. ~~`ap.go` — `ApplyAP()`~~ ✅ (ncontest=0 only, 2026-04-12)
 8. ~~`encode.go` — `GenFT8Tones()`, `GenFT8CWave()`, `gfskPulse()`~~ ✅ (2026-04-12)
 9. ~~`subtract.go` — `SubtractFT8()`~~ ✅ (2026-04-12, `SubtractFT8FFT` removed — no Fortran equivalent)
-10. **`decode.go`** — `DecodeSingle()`, `DecodeIterative()`, `Sync8FindCandidates()` ← NEXT
+10. ~~`decode.go` — `DecodeSingle()`, `DecodeIterative()`, `Sync8FindCandidates()`, types~~ ✅ (2026-04-12)
 
-Once all stubs are ported, the research package will be **fully self-contained**
+The only remaining stub is `fft.go` (`FFT()`/`IFFT()`), which delegates to
+production. Once ported, the research package will be **fully self-contained**
 with zero production imports, and every line traceable to the Fortran source.
 At that point we can:
 - Run all 3 captures and compare decode counts
@@ -350,22 +351,32 @@ At that point we can:
 
 13. **xdt offset convention** — `DecodeSingle` computes `xdt = (ibest-1)*Dt2` where ibest is 0-based in Go, introducing a systematic -0.005s offset vs the Fortran. This only affects display DT and subtraction alignment (60 samples ≈ 3% of a symbol).
 
-14. **`DecodeIterative` pass structure** — The current implementation uses a fixed pass structure:
-    - Pass 0: lighter OSD (`Depth=2` when `params.Depth=3`) + CQ-only AP + up to 300 candidates
-    - Passes 1..N-2: full depth + CQ-only AP + up to 300 candidates
-    - Pass N-1 (final): `Depth=3` + CQ-only AP + up to 100 candidates (deepest search)
-    - All passes: `basebandTimeScan` retry for `SyncPower ≥ 2.0` candidates that fail on first attempt
+14. **`DecodeIterative` pass structure** — The research implementation faithfully ports
+    `ft8_decode.f90` lines 160–239:
+    - `npass=3` for `ndepth≥2`, `npass=2` for `ndepth=1`
+    - Pass 0: lighter OSD (`ndeep = min(ndepth, 2)`)
+    - Passes 1+: full `ndepth`
+    - `syncmin=1.6` for `ndepth≤2`, `syncmin=1.3` otherwise
+    - Up to 600 candidates per pass (`MAXCAND=600`)
     - Early termination when a pass produces no new decodes
 
-15. **Research package decoupling progress** — As of 2026-04-12, 14 of 16 research
+15. **Research package decoupling progress** — As of 2026-04-12, 15 of 16 research
     library files have been ported from Fortran or are self-contained:
     `sync_d.go`, `metrics.go`, `downsample.go`, `ap.go`, `sync8.go`, `realfft.go`,
     `params.go`, `constants.go`, `ldpc.go`, `ldpc_parity.go`, `crc.go`, `message.go`,
-    `encode.go`, `subtract.go`.
-    The remaining 2 stub files (`decode.go`, `fft.go`)
-    still delegate to production `ft8x` and will be replaced one at a time.
+    `encode.go`, `subtract.go`, `decode.go`.
+    The remaining 1 stub file (`fft.go`) still delegates to production `ft8x`.
 
-16. **`SubtractFT8FFT` removed** — The production codebase had two subtraction
+16. **`decode.go` ported — types now local** — `DecodeParams`, `DecodeCandidate`, and
+    `CandidateFreq` were previously type aliases to production `ft8x.*`. They are now
+    defined locally in research `decode.go` with identical fields. `CandidateFreq` is a
+    type alias for `Candidate` (from `sync8.go`) since they have identical fields.
+    `ResetProdDS` and `prodDS` (production scaffolding) were removed. The SNR computation
+    uses tone-ratio only (no `xbase` from `sbase`, since `s8` is local to `DecodeSingle`
+    and not available in `DecodeIterative`). AP is CQ-only (`iaptype=1`); AP types ≥2
+    would require porting `ft8apset`/`pack77`, deferred until needed.
+
+17. **`SubtractFT8FFT` removed** — The production codebase had two subtraction
     variants (`SubtractFT8` per-symbol and `SubtractFT8FFT` FFT-based). The Fortran
     source (`subtractft8.f90`) contains only the FFT-based method. The research
     package now has a single `SubtractFT8` ported faithfully from Fortran. The
