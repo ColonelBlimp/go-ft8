@@ -478,12 +478,16 @@ Headroom: ~10s available for improvements (retries, wider search, etc.)
     not for precision. Additional FFTW plans for 192k r2c and 3200 c2c backward are
     available in `fftw_wrapper.c` for future performance optimization.
 
-21. **Fortran pipeline match verified** — A compiled Fortran reference program
-    (`research/fortran_test/dump_bmet.f90`) calls the exact WSJT-X ft8b pipeline
-    (ft8_downsample, sync8d, symbol spectra, soft metrics, normalizeBmet) on the
-    RA6ABC signal. Result: **Go and Fortran produce bit-identical soft metrics.**
-    All 4 bmet variants match to 4+ decimal places. The decode gap is in candidate
-    search coverage, not in the pipeline algorithm.
+21. **Fortran pipeline match verified — EXCEPT LDPC decoder** — A compiled Fortran
+    reference program (`research/fortran_test/dump_bmet.f90`) calls the exact WSJT-X
+    ft8b pipeline on the RA6ABC signal. **Soft metrics match bit-for-bit** (all 4
+    bmet variants to 4+ decimal places). A second program (`dump_pass1.f90`) runs
+    the full sync8 + ft8b decode loop on all candidates for Cap 1 pass 1. Result:
+    **Fortran decodes 8 signals, Go decodes only 5 — with identical soft metrics.**
+    The 3 extra Fortran decodes (RA1OHX nhard=24, A61CK W3DQS nhard=30, HZ1TT RU1AB
+    nhard=32) all have high hard-error counts, suggesting the difference is in the
+    **LDPC decoder (BP + OSD)**, not the upstream pipeline. Investigation pending —
+    this is the confirmed root cause of the decode gap.
 
 22. **sync8 and subtractft8 comparison** — Line-by-line comparison found no
     algorithmic differences affecting real signals:
