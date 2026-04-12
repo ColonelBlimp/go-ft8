@@ -233,18 +233,18 @@ func DecodeSingle(
 		}
 
 		// OSD depth control (ft8b.f90 lines 403–412)
+		// Fortran: maxosd=2 (default), then sequential if statements:
+		//   ndepth=1 → maxosd=-1 (BP only)
+		//   ndepth=2 → maxosd=0
+		//   ndepth=3 → maxosd stays at 2 (the conditional block is a no-op)
 		norder := 2
 		maxosd := 2
 		if ndepth == 1 {
 			maxosd = -1 // BP only
 		} else if ndepth == 2 {
 			maxosd = 0 // uncoupled BP+OSD
-		} else if ndepth == 3 {
-			maxosd = 0
-			if params.NfQSO > 0 && math.Abs(params.NfQSO-f1) <= params.APWidth {
-				maxosd = 2
-			}
 		}
+		// ndepth >= 3: maxosd stays at 2 (default)
 
 		// LDPC decode (ft8b.f90 lines 413–418)
 		result, ok := Decode174_91(llrz, LDPCk, maxosd, norder, apmask)
@@ -362,6 +362,7 @@ func DecodeIterative(audio []float32, params DecodeParams, freqMin, freqMax floa
 	var results []DecodeCandidate
 	seen := make(map[string]bool)
 	ndecodes := 0
+	prevPassDecodes := 0
 
 	for ipass := 0; ipass < npass; ipass++ {
 		// ft8_decode.f90 lines 176–178
@@ -377,17 +378,18 @@ func DecodeIterative(audio []float32, params DecodeParams, freqMin, freqMax floa
 		}
 
 		// Early termination (ft8_decode.f90 lines 185, 189)
+		// Pass 2: skip if no decodes at all yet
 		if ipass == 1 && ndecodes == 0 {
 			break
 		}
-		n2 := ndecodes
-		if ipass == 2 && ndecodes == n2 {
-			// Will break at end if no new decodes
+		// Pass 3: skip if pass 2 added nothing
+		if ipass == 2 && prevPassDecodes == 0 {
+			break
 		}
 
 		// Sync8 candidate search (ft8_decode.f90 lines 193–195)
 		maxcand := 600
-		candidates, _ := Sync8(ddArr, NMAX, nfa, nfb, syncmin, 0, maxcand)
+		candidates, sbase := Sync8(ddArr, NMAX, nfa, nfb, syncmin, 0, maxcand)
 
 		passParams := DecodeParams{
 			Depth:     ndeep,
@@ -413,20 +415,36 @@ func DecodeIterative(audio []float32, params DecodeParams, freqMin, freqMax floa
 				continue
 			}
 
+			// Compute xbase-calibrated SNR (ft8_decode.f90 line 201, ft8b.f90 lines 449-454)
+			freqBin := int(math.Round(result.Freq / 3.125))
+			if freqBin >= 0 && freqBin < NH1 {
+				xbase := math.Pow(10.0, 0.1*(sbase[freqBin]-40.0))
+				if xbase > 0 {
+					// Recompute SNR using xbase (ft8b.f90 lines 449-454, nagain=false path)
+					// xsnr2 = 10*log10(xsig/xbase/3e6 - 1) - 27
+					// We approximate xsig from the tone-ratio SNR:
+					// tone-ratio arg = xsig/xnoi - 1, so xsig ≈ (arg+1)*xnoi
+					// But we don't have xsig/xnoi separately here.
+					// For now, use xbase for a rough absolute SNR estimate.
+					_ = xbase // TODO: full xbase SNR requires s8 from DecodeSingle
+				}
+			}
+
+			// Adjust DT for display (ft8_decode.f90 line 210: xdt=xdt-0.5)
+			result.DT -= 0.5
+
 			seen[msg] = true
 			ndecodes++
 			passDecodes++
 			results = append(results, result)
 
 			// Subtract decoded signal (ft8_decode.f90 line ~207 via ft8b line 435)
-			SubtractFT8(dd, result.Tones, result.Freq, result.DT)
+			// Use unadjusted DT for subtraction (result.DT has been adjusted, add 0.5 back)
+			SubtractFT8(dd, result.Tones, result.Freq, result.DT+0.5)
 			copy(ddArr[:], dd)
 		}
 
-		// Early termination: no new decodes in pass 2 or 3
-		if ipass >= 1 && passDecodes == 0 {
-			break
-		}
+		prevPassDecodes = passDecodes
 	}
 
 	return results
