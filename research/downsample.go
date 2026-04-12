@@ -116,11 +116,19 @@ func (d *Downsampler) Downsample(dd []float32, newdat *bool, f0 float64) []compl
 	// Fortran lines 43–44:
 	//   c1(0:100)=c1(0:100)*taper(100:0:-1)
 	//   c1(k-1-100:k-1)=c1(k-1-100:k-1)*taper
+	//
+	// Leading taper: c1[0] *= taper(100)=0.0 ... c1[100] *= taper(0)=1.0
+	// (fades from zero at start to full at interior).
 	for i := 0; i <= 100 && i < k; i++ {
 		c1[i] *= complex(d.taper[100-i], 0)
 	}
-	for i := 0; i <= 100 && k-1-i >= 0; i++ {
-		c1[k-1-i] *= complex(d.taper[i], 0)
+	// Trailing taper: c1[k-101] *= taper(0)=1.0 ... c1[k-1] *= taper(100)=0.0
+	// (fades from full at interior to zero at end).
+	for i := 0; i <= 100; i++ {
+		idx := k - 1 - 100 + i
+		if idx >= 0 && idx < nfft2 {
+			c1[idx] *= complex(d.taper[i], 0)
+		}
 	}
 
 	// Fortran line 45:
