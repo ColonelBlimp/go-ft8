@@ -6,6 +6,8 @@
 
 package research
 
+import "strings"
+
 // ── AP message constants (±1 form) ──────────────────────────────────────
 //
 // Port of ft8b.f90 lines 39–46 after the 2*x-1 conversion (lines 52–58).
@@ -41,6 +43,57 @@ var m73 = [19]int{
 //	mrr73 = 2*mrr73 - 1
 var mrr73 = [19]int{
 	-1, +1, +1, +1, +1, +1, +1, -1, -1, +1, +1, +1, -1, +1, -1, +1, -1, -1, +1,
+}
+
+// ComputeAPSymbols computes the 58-element a-priori symbol array from
+// the operator's callsign (mycall) and the DX callsign (hiscall).
+//
+// Port of subroutine ft8apset from wsjt-wsjtx/lib/ft8/ft8apset.f90.
+//
+// For a type-1 message, the first 58 bits of c77 are:
+//
+//	n28a (28 bits) | ipa=0 (1 bit) | n28b (28 bits) | ipb=0 (1 bit)
+//
+// The returned apsym values are in ±1 form. Sentinel value 99 indicates
+// unknown: apsym[0]==99 means mycall is invalid, apsym[29]==99 means
+// hiscall is unknown.
+func ComputeAPSymbols(mycall, hiscall string) [58]int {
+	var apsym [58]int
+
+	// Sentinel defaults (ft8apset.f90 lines 11-13)
+	apsym[0] = 99
+	apsym[29] = 99
+
+	mc := strings.TrimSpace(strings.ToUpper(mycall))
+	if len(mc) < 3 {
+		return apsym
+	}
+
+	// Pack mycall
+	n28a := pack28(mc)
+
+	// Write n28a as 28 bits (MSB first) into apsym[0:27], ipa=0 into apsym[28]
+	for i := 0; i < 28; i++ {
+		bit := (n28a >> uint(27-i)) & 1
+		apsym[i] = 2*bit - 1
+	}
+	apsym[28] = -1 // ipa=0 → 2*0-1 = -1
+
+	// Pack hiscall if provided
+	hc := strings.TrimSpace(strings.ToUpper(hiscall))
+	if len(hc) < 3 {
+		apsym[29] = 99 // sentinel: unknown dxcall
+		return apsym
+	}
+
+	n28b := pack28(hc)
+	for i := 0; i < 28; i++ {
+		bit := (n28b >> uint(27-i)) & 1
+		apsym[29+i] = 2*bit - 1
+	}
+	apsym[57] = -1 // ipb=0 → 2*0-1 = -1
+
+	return apsym
 }
 
 // ApplyAP injects a-priori information into the LLR and mask arrays.

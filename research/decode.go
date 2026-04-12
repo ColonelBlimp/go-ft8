@@ -177,6 +177,9 @@ func DecodeSingle(
 	apmag *= 1.01
 
 	// ── Step 10: Decode passes (ft8b.f90 lines 254–462) ─────────────
+	// Compute AP symbols from callsigns (ft8apset.f90)
+	apsym := ComputeAPSymbols(params.MyCall, params.DxCall)
+
 	// Pass count: 4 regular + AP passes
 	npasses := 4
 	if params.APEnabled {
@@ -222,13 +225,21 @@ func DecodeSingle(
 				}
 			}
 
+			// Guard: skip iaptype≥2 if mycall is unknown (ft8b.f90 line 296)
+			if iaptype >= 2 && apsym[0] > 1 {
+				continue
+			}
+			// Guard: skip iaptype≥3 if dxcall is unknown (ft8b.f90 line 298)
+			if iaptype >= 3 && apsym[29] > 1 {
+				continue
+			}
+
 			// Frequency guard for AP types ≥3 (ft8b.f90 line 293)
 			if iaptype >= 3 && params.NfQSO > 0 && math.Abs(f1-params.NfQSO) > params.APWidth {
 				continue
 			}
 
 			// Apply AP (ncontest=0 path)
-			var apsym [58]int
 			ApplyAP(&llrz, &apmask, iaptype, apsym, apmag)
 		}
 
