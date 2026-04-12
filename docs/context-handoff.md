@@ -25,10 +25,9 @@ into the `research/` sub-package (`/home/mveary/Development/go-ft8/research/`).
    `go test ./research/` (with appropriate flags). Production is frozen and
    untouched; its tests are irrelevant to research work.
 
-3. **DO NOT import production code** in new research files — the research
-   package has one remaining stub (`fft.go`) that delegates to `ft8x`.
-   All other files are fully self-contained. New ports must have zero
-   `ft8x` imports.
+3. **DO NOT import production code** in research files — the research
+   package is now **fully self-contained** with zero `ft8x` imports.
+   All 16 library files have been ported. Keep it that way.
 
 4. **Port from Fortran → Go directly.** Read the `.f90` file, write the `.go`
    file. That's the workflow. No detours.
@@ -53,15 +52,15 @@ zero net benefit**:
 2. Write the Go port in `research/` — self-contained, no production imports
 3. Build: `go build ./research/`
 4. Test: `go test -short -count=1 ./research/` (research tests ONLY)
-5. Once all stubs are ported, run `TestRootCauseAllCaptures` to measure impact
+5. All stubs are ported — run `TestRootCauseAllCaptures` to measure impact
 
 ---
 
 ## Fortran porting progress
 
-The research package is being systematically decoupled from production `ft8x`.
-Each stub file either contains a **direct Fortran port** (✅) or a **thin
-delegation to production** (`// TODO: port from Fortran`) that will be replaced.
+The research package has been **fully decoupled** from production `ft8x`.
+All 16 library files are direct Fortran ports or self-contained implementations
+with zero production imports.
 
 The porting order follows the call chain bottom-up, so each piece can be
 verified in isolation before composing:
@@ -78,7 +77,7 @@ verified in isolation before composing:
 | 8 | `encode.go` | `GenFT8Tones()`, `GenFT8CWave()`, `gfskPulse()` | `genft8.f90`, `gen_ft8wave.f90`, `gfsk_pulse.f90` | ✅ Ported |
 | 9 | `subtract.go` | `SubtractFT8()` | `subtractft8.f90` | ✅ Ported |
 | 10 | `decode.go` | `DecodeSingle()`, `DecodeIterative()`, `Sync8FindCandidates()`, types | `ft8b.f90`, `ft8_decode.f90` | ✅ Ported |
-| 11 | `fft.go` | `FFT()`, `IFFT()` | `four2a.f90` | TODO (delegates to production) |
+| 11 | `fft.go` | `FFT()`, `IFFT()`, `fftMixedRadix()` | `four2a.f90` (FFTW wrapper — algorithm is standard mixed-radix Cooley-Tukey) | ✅ Ported |
 | 12 | `realfft.go` | `RealFFT()` | N/A (optimized N/2-point trick) | ✅ Already local (uses local `FFT()`) |
 
 ### Key porting notes
@@ -87,9 +86,11 @@ verified in isolation before composing:
   specifically for the symbol spectra computation (matching `four2a(csymb,32,1,-1,1)`).
   This avoids depending on the general-purpose FFT router for the hot inner loop.
 
-- **`fft.go`** delegates `FFT()`/`IFFT()` to production for now. These route to
-  mixed-radix for 5-smooth sizes. Will be ported last since the FFT implementation
-  is well-tested and unlikely to be the source of decode differences.
+- **`fft.go`** — Recursive mixed-radix Cooley-Tukey FFT with radix-2, radix-3, and
+  radix-5 butterflies. All FT8 FFT sizes (192000, 180000, 3200, 1920) are 5-smooth.
+  `IFFT()` uses the conjugate trick (conj → FFT → conj → scale). The Fortran
+  `four2a.f90` is a thin FFTW wrapper with no algorithm to port — the FFT is a
+  standard algorithm implementation.
 
 - **Test files** (`*_test.go`) have been updated to call local research functions
   instead of `ft8x.*`. No test file imports production code.
@@ -175,7 +176,7 @@ Full test suite (WAV, 3 caps):   ~39 s
 
 Run via: `go test -v -run "TestRootCauseAllCaptures" ./research/`
 
-**Research pipeline decode counts** (using research sync8 + research stubs → ft8x delegation):
+**Research pipeline decode counts** (pre-decoupling, using research sync8 + ft8x delegation stubs):
 
 | Capture | Research pipeline | Production iterative | WSJT-X reference |
 |---|---|---|---|
@@ -233,8 +234,8 @@ numerically correct — the gap is NOT a Go vs Fortran precision issue.
 ### Research file inventory (ACTIVE DEVELOPMENT)
 
 All research files are in `research/` (`/home/mveary/Development/go-ft8/research/`).
-The research package is being decoupled from production `ft8x` — all test files
-now call local functions; stub files delegate to production only until ported.
+The research package is **fully self-contained** — zero production `ft8x` imports.
+All 16 library files are direct Fortran ports or standard algorithm implementations.
 
 **Ported from Fortran (self-contained, no production dependency):**
 
@@ -255,12 +256,7 @@ now call local functions; stub files delegate to production only until ported.
 | `encode.go` | ~130 | `genft8.f90`, `gen_ft8wave.f90`, `gfsk_pulse.f90` | `GenFT8Tones()`, `GenFT8CWave()`, `gfskPulse()` |
 | `subtract.go` | ~130 | `subtractft8.f90` | `SubtractFT8()` (FFT-based LPF method, `lrefinedt=false` path) |
 | `decode.go` | ~300 | `ft8b.f90`, `ft8_decode.f90` | `DecodeSingle()`, `DecodeIterative()`, `Sync8FindCandidates()`, `DecodeParams`, `DecodeCandidate`, `CandidateFreq` |
-
-**Stub files (delegate to production, TODO port from Fortran):**
-
-| File | Lines | Fortran source | Functions stubbed |
-|---|---|---|---|
-| `fft.go` | 32 | `four2a.f90` | `FFT()`, `IFFT()` |
+| `fft.go` | ~180 | N/A (standard algorithm) | `FFT()`, `IFFT()`, `fftMixedRadix()`, `smallestFactor()` — recursive mixed-radix Cooley-Tukey for 5-smooth sizes |
 
 **Test and diagnostic files:**
 
@@ -283,29 +279,28 @@ now call local functions; stub files delegate to production only until ported.
 
 ## What to do next
 
-### Continue porting stubs from Fortran (in dependency order)
+### Porting complete — all stubs eliminated
 
-The immediate task is to continue replacing stub delegations with direct Fortran
-ports, working up the call chain:
+All 16 research library files have been ported from Fortran (or are standard
+algorithm implementations). The research package has **zero production `ft8x`
+imports**. Porting completed 2026-04-12:
 
 1. ~~`sync_d.go` — `Sync8d`, `HardSync`~~ ✅
 2. ~~`metrics.go` — `ComputeSymbolSpectra`, `ComputeSoftMetrics`~~ ✅
-3. ~~`downsample.go` — `Downsampler`, `TwkFreq1()`~~ ✅ (trailing taper bug fixed 2026-04-12)
+3. ~~`downsample.go` — `Downsampler`, `TwkFreq1()`~~ ✅
 4. ~~`ldpc.go` + `crc.go` — `Decode174_91()`, `BPDecode()`, `OSDDecode()`, CRC-14~~ ✅
 5. ~~`ldpc_parity.go` — `LDPCMn`, `LDPCNm`, `LDPCNrw`, generator hex~~ ✅
 6. ~~`message.go` — `Unpack77()`, `BitsToC77()`~~ ✅
-7. ~~`ap.go` — `ApplyAP()`~~ ✅ (ncontest=0 only, 2026-04-12)
-8. ~~`encode.go` — `GenFT8Tones()`, `GenFT8CWave()`, `gfskPulse()`~~ ✅ (2026-04-12)
-9. ~~`subtract.go` — `SubtractFT8()`~~ ✅ (2026-04-12, `SubtractFT8FFT` removed — no Fortran equivalent)
-10. ~~`decode.go` — `DecodeSingle()`, `DecodeIterative()`, `Sync8FindCandidates()`, types~~ ✅ (2026-04-12)
+7. ~~`ap.go` — `ApplyAP()`~~ ✅
+8. ~~`encode.go` — `GenFT8Tones()`, `GenFT8CWave()`, `gfskPulse()`~~ ✅
+9. ~~`subtract.go` — `SubtractFT8()`~~ ✅
+10. ~~`decode.go` — `DecodeSingle()`, `DecodeIterative()`, types~~ ✅
+11. ~~`fft.go` — `FFT()`, `IFFT()`, mixed-radix Cooley-Tukey~~ ✅
 
-The only remaining stub is `fft.go` (`FFT()`/`IFFT()`), which delegates to
-production. Once ported, the research package will be **fully self-contained**
-with zero production imports, and every line traceable to the Fortran source.
-At that point we can:
-- Run all 3 captures and compare decode counts
-- Trace any remaining differences to specific Fortran lines
-- Make targeted improvements with measurable impact
+The research package is now ready for:
+- Running all 3 captures via `TestRootCauseAllCaptures` to compare decode counts
+- Tracing any remaining differences to specific Fortran lines
+- Making targeted improvements with measurable impact
 
 ### Phase 1 success criteria (from assessment §5.5)
 
@@ -360,12 +355,10 @@ At that point we can:
     - Up to 600 candidates per pass (`MAXCAND=600`)
     - Early termination when a pass produces no new decodes
 
-15. **Research package decoupling progress** — As of 2026-04-12, 15 of 16 research
-    library files have been ported from Fortran or are self-contained:
-    `sync_d.go`, `metrics.go`, `downsample.go`, `ap.go`, `sync8.go`, `realfft.go`,
-    `params.go`, `constants.go`, `ldpc.go`, `ldpc_parity.go`, `crc.go`, `message.go`,
-    `encode.go`, `subtract.go`, `decode.go`.
-    The remaining 1 stub file (`fft.go`) still delegates to production `ft8x`.
+15. **Research package fully decoupled** — As of 2026-04-12, all 16 research
+    library files have been ported from Fortran or are self-contained. Zero
+    production `ft8x` imports remain. The package is ready for independent
+    development and measurement.
 
 16. **`decode.go` ported — types now local** — `DecodeParams`, `DecodeCandidate`, and
     `CandidateFreq` were previously type aliases to production `ft8x.*`. They are now
@@ -376,7 +369,14 @@ At that point we can:
     and not available in `DecodeIterative`). AP is CQ-only (`iaptype=1`); AP types ≥2
     would require porting `ft8apset`/`pack77`, deferred until needed.
 
-17. **`SubtractFT8FFT` removed** — The production codebase had two subtraction
+17. **`fft.go` ported — pure Go mixed-radix FFT** — The Fortran `four2a.f90` is a thin
+    FFTW wrapper with no algorithm to port. The research `fft.go` implements a recursive
+    Cooley-Tukey decimation-in-time FFT with radix-2, radix-3, and radix-5 butterflies.
+    All FT8 FFT sizes (192000, 180000, 3200, 1920) are 5-smooth. `IFFT()` uses the
+    conjugate trick. The recursive implementation allocates O(n log n) memory — acceptable
+    for Phase 1; can be optimized to iterative Stockham in Phase 2 if needed.
+
+18. **`SubtractFT8FFT` removed** — The production codebase had two subtraction
     variants (`SubtractFT8` per-symbol and `SubtractFT8FFT` FFT-based). The Fortran
     source (`subtractft8.f90`) contains only the FFT-based method. The research
     package now has a single `SubtractFT8` ported faithfully from Fortran. The
