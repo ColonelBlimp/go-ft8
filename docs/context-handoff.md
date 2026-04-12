@@ -410,19 +410,43 @@ float32 truncation at the `Decode174_91` entry point before passing to `osdDecod
 | `bmet_cand9.bin` (repo root) | Fortran binary float32 bmet arrays (4×174×float32 = 2784 bytes) |
 | `llr_cand9.txt` (repo root) | Fortran text LLR values (E20.12 precision) |
 
-**Fortran trace programs (source in `research/fortran_test/`, binaries in `/tmp/`):**
+**Fortran trace programs (source in `research/fortran_test/`, compile in `/tmp/`):**
 
-| Binary | Source | Purpose |
-|---|---|---|
-| `dump_pass1_fortran` | `dump_pass1.f90` | Full pass 1 decode (8 signals on Cap 1) |
-| `dump_llr` | `dump_llr.f90` | LLR dump + OSD decode for candidate 9 |
-| `dump_llr_bin` | `/tmp/dump_llr_bin.f90` | Binary bmet/cd0 dump for candidate 9 |
-| `dump_osd_trace_bin` | `/tmp/dump_osd_trace_bin.f90` | OSD step-by-step trace (reads binary bmet) |
-| `dump_ge_indices` | `/tmp/dump_ge_indices.f90` | Post-GE indices dump |
-| `dump_pre_ge` | `/tmp/dump_pre_ge.f90` | Pre-GE genmrb dump |
-| `dump_indices` | `/tmp/dump_indices.f90` | Full sort order dump |
-| `osd_sortcheck` | `/tmp/osd_sortcheck.f90` | Sort verification |
-| `debug_bmet` | `/tmp/dump_osd_trace_bin_debug.f90` | Binary bmet readback check |
+These are our own diagnostic programs (not GPL code). They link against WSJT-X
+subroutines at compile time, so compiled binaries must NOT be committed or
+distributed. Source files are safe to commit — they contain only subroutine
+calls (API usage), not copied GPL source.
+
+| Source | Purpose |
+|---|---|
+| `dump_pass1.f90` | Full pass 1 decode (8 signals on Cap 1) |
+| `dump_llr.f90` | LLR text dump + OSD decode for candidate 9 |
+| `dump_llr_bin.f90` | Binary bmet/cd0 dump for candidate 9 (generates `bmet_cand9.bin`) |
+| `dump_osd_trace.f90` | OSD step-by-step trace (reads text LLR file) |
+| `dump_osd_trace_bin.f90` | OSD step-by-step trace (reads binary bmet — key diagnostic) |
+| `dump_sync8.f90` | Sync8 candidate list dump |
+| `dump_osd_order.f90` | OSD reliability ordering dump |
+| `dump_gen.f90` | Generator matrix dump |
+
+**Regenerating test artifacts (needed after fresh clone or reboot):**
+
+The binary test artifacts (`bmet_cand9.bin`, `llr_cand9.txt`) are gitignored.
+Go tests skip gracefully when they're missing. To regenerate:
+
+```bash
+# 1. Compile dump_llr_bin (generates bmet_cand9.bin)
+cd /tmp
+sed "s|~/Development|$HOME/Development|g" \
+  ~/Development/go-ft8/research/fortran_test/dump_llr_bin.f90 > tmp.f90
+gfortran -O2 -o dump_llr_bin tmp.f90 \
+  <full link list from compile recipe below>
+cd ~/Development/go-ft8
+/tmp/dump_llr_bin testdata/ft8test_capture_20260410.wav
+
+# 2. Compile dump_llr (generates llr_cand9.txt with E20.12 precision)
+#    Modify the format string in dump_llr.f90 from F12.6 to E20.12 first,
+#    or use the existing llr_cand9.txt if precision is sufficient.
+```
 
 **Compile recipe (all programs):**
 ```
