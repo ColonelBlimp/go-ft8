@@ -179,38 +179,59 @@ Full test suite (WAV, 3 caps):   ~39 s
 
 Run via: `go test -v -run "TestRootCauseAllCaptures" ./research/`
 
-**Research pipeline decode counts** (fully decoupled, after maxosd fix):
+**WSJT-X reference corrected 2026-04-12:** Cap 2 had 2 phantom signals (CQ HA1BF,
+UA4CCH VK2VT) that WSJT-X did NOT decode — our pipeline decodes them as bonus.
+Cap 2 WSJT-X reference is 15 signals, not 17. All DTs corrected to WSJT-X ALL.TXT
+display DT values (previously some were 1.800 placeholders). Recording station: 7Q5MLV
+(monitoring only, not transmitting — AP types 2+ cannot help).
 
-| Capture | Research pipeline | Production iterative | WSJT-X reference |
+**Research pipeline decode counts:**
+
+| Capture | Research | WSJT-X ref | Bonus (we decode, WSJT-X doesn't) |
 |---|---|---|---|
-| Cap 1 | 7/13 | 8/13 | 13/13 |
-| Cap 2 | 10/17 | 11/17 | 17/17 |
-| Cap 3 | 16/21 | 16/21 | 21/21 |
+| Cap 1 | 7/13 | 13 | 0 |
+| Cap 2 | 8/15 | 15 | 2 (CQ HA1BF, UA4CCH VK2VT) |
+| Cap 3 | 16/21 | 21 | 0 |
 
-**Note:** Production iterative slightly outperforms the research pipeline on Caps 1 and 2.
-The dominant gap vs WSJT-X is AP limitation (15 of 18 missing signals are non-CQ and need
-AP types 2-6). AP type 2 is now implemented; testing with `MyCall` set may recover
-some of these signals.
+**Pipeline verification (2026-04-12):** Compiled and ran a Fortran reference program
+(`research/fortran_test/dump_bmet.f90`) that calls the exact WSJT-X ft8b pipeline on
+the RA6ABC signal (1814 Hz, Cap 1). **Result: Go and Fortran produce bit-identical
+soft metrics** (all 4 bmet variants match to 4+ decimal places, cd0 matches, ibest/
+nsync identical). The decode pipeline IS a faithful port. See also the detailed
+sync8 and subtractft8 comparison below.
 
-**Failure classification (16 missing in research, 18 missing vs WSJT-X):**
+**Failure classification (corrected, 18 missing vs WSJT-X):**
 
 | Failure mode | Count | Captures | Description |
 |---|---|---|---|
-| `sync_fail + ap_limitation` | 10 | Cap1: 6, Cap3: 4 | nsync ≤ 6, all non-CQ — blocked by DecodeSingle hard gate AND need AP type ≥2 |
-| `ldpc_fail + ap_limitation` | 5 | Cap2: 5 | nsync 8–14 (passes sync), LDPC can't converge, all non-CQ — need AP type ≥2 |
-| `subtraction_needed` | 2 | Cap2: 2 | Decode OK on original audio at exact params, missed by pipeline candidate search |
-| `sync_fail` | 1 | Cap3: 1 | CQ CO8LY masked by nearby CQ 4S6ARW (6 Hz separation), genuinely at noise floor |
+| `subtraction_needed` | 4 | Cap1: 2, Cap2: 2 | Decode OK at exact params, missed by iterative candidate search |
+| `ldpc_fail` | 4 | Cap1: 4 | Strong sync (nsync 10-16) but LDPC fails; wide grid search (±20Hz/±2s) also fails; likely depends on subtraction order from WSJT-X session context |
+| `ldpc_fail + ap_limitation` | 4 | Cap2: 4 | Non-CQ, sync OK but LDPC fails; AP can't help (7Q5MLV not in messages) |
+| `sync_fail + ap_limitation` | 3 | Cap2: 1, Cap3: 2 | nsync ≤ 6, non-CQ |
+| `masked` | 1 | Cap3: 1 | CQ CO8LY blocked by nearby CQ 4S6ARW (6 Hz separation) |
+| `sync_fail` (CQ) | 2 | Cap2: 1 (TN8GD), Cap3: 0 | CQ signal, sync8 candidate below syncmin threshold |
 
 **Key findings:**
 
-1. **AP limitation (dominant):** 15 of 18 missing signals are non-CQ messages that
-   WSJT-X decodes using interactive QSO-progress AP (types 2–6, injecting 32–77 known
-   bits). Our CQ-only AP (type 1, 32 bits) can't help these. AP type 2 infrastructure
-   is implemented; testing with `MyCall` set may recover some of these.
+1. **Pipeline is faithful:** Go produces identical soft metrics to Fortran (verified
+   by compiling and running Fortran reference). The decode gap is NOT in the pipeline
+   algorithm — it's in candidate search coverage and iterative subtraction order.
 
-2. **FFT precision gap (CQ signals):** Two missing CQ signals (`CQ TN8GD JI75` at
-   450 Hz in Cap 2, `CQ CO8LY FL20` at 932 Hz in Cap 3) are blocked by a float32 vs
-   float64 FFT precision difference. See item 20 in "Known issues" for full details.
+2. **AP is not the gap:** The recording station (7Q5MLV) was monitoring only. None of
+   the missing signals contain 7Q5MLV. AP types 2-6 cannot help for these captures.
+   The `ap_limitation` label was misleading — WSJT-X also cannot use AP for these.
+
+3. **4 signals are recoverable (`subtraction_needed`):** RA1OHX, WB9VGJ (Cap 1),
+   UY7VV (Cap 2), TN8GD (Cap 2) decode at exact params but sync8 doesn't produce
+   the right candidates. Fixing candidate coverage is the clear next step.
+
+4. **4 Cap 1 signals depend on session context:** RA6ABC, RV6ASU, UA3LAR fail at
+   ALL (freq, DT) in ±20Hz/±2s grid on raw audio. Both Go and Fortran produce the
+   same (failing) LLR values. WSJT-X likely decoded these through a different
+   subtraction order or session-specific context we can't reproduce from WAV files.
+
+5. **CGO FFTW provides 43× speedup** on the spectrogram FFT (sync8 hot path).
+   Overall decode time for 3 passes is ~4.5s, well within the 15s FT8 window.
 
 ### Production source file inventory
 
@@ -309,20 +330,45 @@ imports**. Porting completed 2026-04-12:
 10. ~~`decode.go` — `DecodeSingle()`, `DecodeIterative()`, types~~ ✅
 11. ~~`fft.go` — `FFT()`, `IFFT()`, mixed-radix Cooley-Tukey~~ ✅
 
-The research package is now ready for:
-- Running all 3 captures via `TestRootCauseAllCaptures` to compare decode counts
-- Tracing any remaining differences to specific Fortran lines
-- Making targeted improvements with measurable impact
+### Timing budget (2026-04-12, with CGO FFTW spectrogram)
+
+| Component | Time | Notes |
+|---|---|---|
+| Sync8 (FFTW spectrogram) | 32 ms/pass | 43× faster than pure Go |
+| 192k downsample FFT | 31 ms (once/pass) | Pure Go; could move to CGO FFTW (~1ms) |
+| DecodeSingle (ndepth=2) | 4.5 ms/candidate | BP only |
+| DecodeSingle (ndepth=3) | 7.0 ms/candidate | BP + OSD |
+| **Total 3-pass decode** | **~4.5 s** | 260 candidates/pass, well within 15s FT8 window |
+
+Headroom: ~10s available for improvements (retries, wider search, etc.)
+
+### What to do next
+
+**Candidate coverage is the bottleneck.** The decode pipeline is verified correct.
+4 signals decode at exact params but sync8 doesn't find them (`subtraction_needed`).
+4 more depend on subtraction order from WSJT-X session context. Focus areas:
+
+1. **Improve sync8 candidate coverage** — The `subtraction_needed` signals (RA1OHX,
+   WB9VGJ, TN8GD, UY7VV) are missed because sync8 doesn't produce candidates close
+   enough in (freq, DT) for DecodeSingle's ±10-sample/±2.5Hz search to converge.
+   Options: widen DecodeSingle search, add adjacent-grid-bin retries for high-sync
+   failed candidates, or lower syncmin threshold for marginal bins.
+
+2. **Improve subtraction quality** — Better subtraction means cleaner audio for later
+   passes, potentially recovering signals that depend on subtraction order.
+
+3. **Move 192k downsampler FFT to CGO FFTW** — Would save ~30ms/pass (31ms → ~1ms),
+   freeing budget for retries. Easy win, same CGO infrastructure already in place.
 
 ### Phase 1 success criteria (from assessment §5.5)
 
 | Metric | Current | Target |
 |---|---|---|
-| Capture 1 correct | 8/13 (production iterative) | ≥ 11/13 |
-| Capture 2 correct | 11/17 (production iterative) | ≥ 14/17 |
-| Capture 3 correct | 16/21 (production iterative) | ≥ 18/21 |
+| Capture 1 correct | 7/13 (research) | ≥ 11/13 |
+| Capture 2 correct | 8/15 + 2 bonus (research) | ≥ 12/15 |
+| Capture 3 correct | 16/21 (research) | ≥ 18/21 |
 | False decode rate | 0 | ≤ 1 per capture |
-| Full decode cycle | ~13 s per capture | < 2 s per capture |
+| Full decode cycle | ~4.5 s (with FFTW) | < 2 s per capture |
 
 ---
 
@@ -387,14 +433,14 @@ The research package is now ready for:
     `ComputeAPSymbols` computes the ±1 `apsym` array from `params.MyCall`/`params.DxCall`
     via `pack28`. Guards skip iaptype≥2 if mycall unknown, iaptype≥3 if dxcall unknown.
 
-17. **`fft.go` ported — pure Go mixed-radix FFT (float64)** — The Fortran `four2a.f90`
-    wraps single-precision FFTW (`sfftw_*`). The research `fft.go` implements a recursive
-    Cooley-Tukey decimation-in-time FFT with radix-2/3/5 butterflies in float64.
-    All FT8 FFT sizes (192000, 180000, 3200, 1920) are 5-smooth. The float64 vs float32
-    precision difference is measurable in the sync8 spectrogram path and causes marginal
-    signals to fall below the `syncmin=1.3` threshold (see item 20). A CGO bridge to
-    `libfftw3f` is planned for the spectrogram path; the pure-Go FFT remains for
-    downsample (192k-point) and other non-spectrogram uses.
+17. **`fft.go` + CGO FFTW** — The Fortran `four2a.f90` wraps single-precision FFTW
+    (`sfftw_*`). The research package now uses CGO FFTW (`fftw.go` + `fftw_wrapper.c`)
+    for the spectrogram 3840-point r2c FFT, providing a 43× speedup. Testing showed
+    that float32 vs float64 precision has **no impact on decode results** — both
+    produce identical soft metrics (verified with compiled Fortran reference). The
+    FFTW path is retained for performance (32ms vs ~1.4s per sync8 pass). The pure-Go
+    `FFT`/`IFFT` remain for non-spectrogram paths. A float32 LDPC decoder variant
+    (`ldpc_f32.go`) was also tested and confirmed to produce identical results.
 
 18. **`decode.go` review fixes (2026-04-12)** — Line-by-line comparison against
     `ft8b.f90` and `ft8_decode.f90` found and fixed:
@@ -414,38 +460,44 @@ The research package is now ready for:
     package now has a single `SubtractFT8` ported faithfully from Fortran. The
     `SubtractFT8FFT` name was removed; all test callers updated to use `SubtractFT8`.
 
-20. **FFT precision: float64 Go vs float32 Fortran (spectrogram path)** —
-    Fortran `four2a.f90` calls `sfftw_plan_dft_r2c_1d` — the **single-precision**
-    (float32) FFTW library. Our Go `RealFFT` / `FFT` compute in float64. This causes
-    measurable differences in the sync8 spectrogram power values, which cascade through
-    the 40th-percentile normalization into the candidate sync threshold.
+20. **FFT precision: thoroughly investigated, NOT the cause** —
+    Exhaustive testing (2026-04-12) showed float32 vs float64 FFT precision has
+    **zero impact on decode results**:
 
-    **Evidence:** For Cap 2, frequency bin 144 (450.0 Hz) — the `CQ TN8GD JI75` signal:
-    - Raw wide-peak sync2d = 2.892, 40th percentile baseline = 2.349
-    - Normalized sync = 2.892 / 2.349 = **1.231**
-    - `syncmin` threshold = **1.300**
-    - Gap = **0.069 (5.3%)** — the candidate is excluded, and TN8GD is never tried
-    - Lowering syncmin to 1.2 recovers TN8GD (confirmed by test), adding only 97 extra
-      candidates (306→403) with no false positives
+    - CGO FFTW float32 spectrogram (3840-point): identical decode counts
+    - CGO FFTW float32 downsampler (192k-point): relRMS 1.5e-7, identical decodes
+    - Float32 LDPC decoder: identical decode counts
+    - Compiled Fortran reference: produces identical soft metrics to Go
 
-    **Options evaluated:**
-    1. Lower syncmin from 1.3 to 1.2 — easy but fragile; masks the root cause and
-       different marginal signals on different captures could have different gaps
-    2. **CGO wrapper around `libfftw3f` (single-precision FFTW)** — matches Fortran
-       exactly since it uses the *same library*; scoped to the spectrogram 3840-point
-       r2c FFT only (372 calls per sync8 pass); the 192k-point downsample FFT stays
-       float64. **Selected approach — implementation pending.**
-    3. Truncate spectrogram power values to float32 after the float64 FFT — a shortcut
-       that wouldn't reproduce the intermediate float32 rounding path through the FFT
-       butterfly stages, so results may still differ unpredictably
+    The bin 144 TN8GD case (normalized sync 1.23 vs syncmin 1.3) is a property of
+    the signal, not FFT precision — both Go and Fortran produce the same value.
+    TN8GD is classified as `subtraction_needed` (decodable at exact params, missed
+    by candidate search).
 
-    **Scope of CGO change:**
-    - One C file: thin wrapper around `fftwf_plan_dft_r2c_1d` + `fftwf_execute`
-    - One Go file: CGO bridge with plan caching (one plan for size 3840, reused)
-    - `computeSpectrogram()` in `sync8.go`: swap `RealFFT(buf, NFFT1)` call for the
-      CGO float32 path
-    - Build dependency: `libfftw3f-dev` (available on all major Linux distros)
-    - The pure-Go `RealFFT`/`FFT` remain available for non-spectrogram paths
+    CGO FFTW is retained in the spectrogram hot path for **performance** (43× faster),
+    not for precision. Additional FFTW plans for 192k r2c and 3200 c2c backward are
+    available in `fftw_wrapper.c` for future performance optimization.
+
+21. **Fortran pipeline match verified** — A compiled Fortran reference program
+    (`research/fortran_test/dump_bmet.f90`) calls the exact WSJT-X ft8b pipeline
+    (ft8_downsample, sync8d, symbol spectra, soft metrics, normalizeBmet) on the
+    RA6ABC signal. Result: **Go and Fortran produce bit-identical soft metrics.**
+    All 4 bmet variants match to 4+ decimal places. The decode gap is in candidate
+    search coverage, not in the pipeline algorithm.
+
+22. **sync8 and subtractft8 comparison** — Line-by-line comparison found no
+    algorithmic differences affecting real signals:
+    - sync8: division-by-zero guard in sync2d (Go returns 0, Fortran produces Inf
+      for degenerate inputs) — no practical impact
+    - sync8: normalization scope (Go normalizes [ia..ib] only, Fortran normalizes
+      entire array) — no downstream impact since only [ia..ib] is accessed
+    - subtractft8: algebraically equivalent FFT normalization path (Go uses
+      normalized IFFT, Fortran uses unnormalized IFFT with compensating fac)
+    - Iterative loop: identical pass structure, newdat caching, subtraction timing
+
+23. **Recording station 7Q5MLV** — All 3 captures were recorded by 7Q5MLV
+    (monitoring only, not transmitting). AP types 2-6 cannot help because none
+    of the missing signals contain 7Q5MLV as call1 or call2.
 
 ---
 

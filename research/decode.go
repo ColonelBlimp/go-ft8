@@ -34,6 +34,8 @@ type DecodeParams struct {
 	NfQSO float64
 	// MaxPasses is the number of subtraction passes for DecodeIterative (default 3).
 	MaxPasses int
+	// UseF32LDPC selects the float32 LDPC decoder variant (matching Fortran precision).
+	UseF32LDPC bool
 }
 
 // DecodeCandidate is the result of decoding one FT8 signal candidate.
@@ -258,7 +260,13 @@ func DecodeSingle(
 		// ndepth >= 3: maxosd stays at 2 (default)
 
 		// LDPC decode (ft8b.f90 lines 413–418)
-		result, ok := Decode174_91(llrz, LDPCk, maxosd, norder, apmask)
+		var result DecodeResult
+		var ok bool
+		if params.UseF32LDPC {
+			result, ok = Decode174_91_F32(llrz, LDPCk, maxosd, norder, apmask)
+		} else {
+			result, ok = Decode174_91(llrz, LDPCk, maxosd, norder, apmask)
+		}
 		if !ok {
 			continue
 		}

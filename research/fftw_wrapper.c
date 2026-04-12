@@ -1,38 +1,64 @@
 // fftw_wrapper.c — Thin C wrapper around single-precision FFTW (fftwf).
 //
-// Provides a cached r2c plan for the 3840-point spectrogram FFT,
-// matching the Fortran four2a.f90 call: sfftw_plan_dft_r2c_1d(plan, 3840, ...).
+// Provides cached r2c plans matching Fortran four2a.f90 (sfftw_plan_dft_r2c_1d):
+//   - 3840-point for the spectrogram FFT
+//   - 192000-point for the downsampler forward FFT
 //
-// Only the spectrogram path uses this; all other FFTs remain pure Go.
+// Also provides a cached c2c backward plan:
+//   - 3200-point for the downsampler inverse FFT
 
 #include <fftw3.h>
 #include <string.h>
 
-// Cached plan for NFFT1=3840 r2c transform.
+// ── 3840-point r2c (spectrogram) ─────────────────────────────────────────
+
 static fftwf_plan plan3840 = NULL;
 
-// fftw_r2c_3840 computes a 3840-point real-to-complex FFT in single precision.
-//
-// in:  3840 float32 values (real input, zero-padded by caller)
-// out: 1921 complex float32 values (N/2+1 unique bins)
-//
-// The plan is created on first call with FFTW_ESTIMATE (matching Fortran default)
-// and reused on subsequent calls.
-//
-// FFTW's r2c overwrites the input array, so we work on a copy.
 void fftw_r2c_3840(const float *in, float *out) {
-    // Lazy plan creation (not thread-safe, but sync8 is single-threaded)
     if (plan3840 == NULL) {
-        // FFTW_ESTIMATE does not modify the input/output arrays during planning
         plan3840 = fftwf_plan_dft_r2c_1d(3840, (float *)out, (fftwf_complex *)out,
                                           FFTW_ESTIMATE);
     }
-
-    // Copy input into output buffer (FFTW r2c can work in-place when
-    // the output array has room for N/2+1 complex values = N+2 floats).
-    // out must be at least 3842 floats (1921 complex values).
     memcpy(out, in, 3840 * sizeof(float));
-
-    // Execute the cached plan on the output buffer (in-place)
     fftwf_execute_dft_r2c(plan3840, (float *)out, (fftwf_complex *)out);
+}
+
+// ── 192000-point r2c (downsampler forward) ───────────────────────────────
+
+static fftwf_plan plan192k = NULL;
+
+// fftw_r2c_192k computes a 192000-point real-to-complex FFT in single precision.
+//
+// in:  up to 180000 float32 values (zero-padded to 192000 by caller)
+// out: 96001 complex float32 values (N/2+1 bins) = 192002 floats
+//
+// Matches Fortran ft8_downsample.f90:
+//   call four2a(cx, NFFT1, 1, -1, 0)   ! sfftw r2c, NFFT1=192000
+void fftw_r2c_192k(const float *in, float *out) {
+    if (plan192k == NULL) {
+        plan192k = fftwf_plan_dft_r2c_1d(192000, (float *)out, (fftwf_complex *)out,
+                                           FFTW_ESTIMATE);
+    }
+    memcpy(out, in, 192000 * sizeof(float));
+    fftwf_execute_dft_r2c(plan192k, (float *)out, (fftwf_complex *)out);
+}
+
+// ── 3200-point c2c backward (downsampler inverse) ────────────────────────
+
+static fftwf_plan plan3200_bw = NULL;
+
+// fftw_c2c_3200_backward computes a 3200-point c2c backward (inverse) FFT
+// in single precision, UNNORMALIZED (matching Fortran four2a isign=+1).
+//
+// inout: 3200 complex float32 values (6400 floats), modified in-place.
+//
+// Matches Fortran ft8_downsample.f90:
+//   call four2a(c1, NFFT2, 1, 1, 1)   ! sfftw c2c backward, NFFT2=3200
+void fftw_c2c_3200_backward(float *inout) {
+    if (plan3200_bw == NULL) {
+        plan3200_bw = fftwf_plan_dft_1d(3200, (fftwf_complex *)inout,
+                                         (fftwf_complex *)inout,
+                                         FFTW_BACKWARD, FFTW_ESTIMATE);
+    }
+    fftwf_execute_dft(plan3200_bw, (fftwf_complex *)inout, (fftwf_complex *)inout);
 }
