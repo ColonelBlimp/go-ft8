@@ -98,36 +98,12 @@ type candidateDecode struct {
 	Result ldpcResult
 }
 
-func decodeCandidateMessage(analysis candidateAnalysis) (string, bool) {
-	decoded, ok := decodeCandidate(analysis)
-	if !ok {
-		return "", false
-	}
-	return decoded.Text, true
-}
-
-func decodeCandidateVariants(dd []float32, ds *downsampler, cand candidate, recompute bool) (candidateAnalysis, candidateDecode, bool) {
-	return decodeCandidateVariantsForMetricSetNoHashes(dd, ds, cand, recompute, 2)
-}
-
-func decodeCandidateVariantsForMetricSetNoHashes(dd []float32, ds *downsampler, cand candidate, recompute bool, metricSet int) (candidateAnalysis, candidateDecode, bool) {
-	return decodeCandidateVariantsForMetricSet(dd, ds, cand, recompute, metricSet, nil, normalizeDecoderOptions(DecoderOptions{}))
-}
-
 func decodeCandidateVariantsForMetricSet(dd []float32, ds *downsampler, cand candidate, recompute bool, metricSet int, hashes *hashTable, options decodeOptions) (candidateAnalysis, candidateDecode, bool) {
 	analysis := analyzeCandidateWithDownsamplerForMetricSet(dd, ds, cand, recompute, metricSet)
 	if decoded, ok := decodeCandidateWithMetricSet(analysis, metricSet, hashes, options); ok {
 		return analysis, decoded, true
 	}
 	return analysis, candidateDecode{}, false
-}
-
-func decodeCandidate(analysis candidateAnalysis) (candidateDecode, bool) {
-	return decodeCandidateWithMetricSetNoHashes(analysis, 2)
-}
-
-func decodeCandidateWithMetricSetNoHashes(analysis candidateAnalysis, metricSet int) (candidateDecode, bool) {
-	return decodeCandidateWithMetricSet(analysis, metricSet, nil, normalizeDecoderOptions(DecoderOptions{}))
 }
 
 func decodeCandidateWithMetricSet(analysis candidateAnalysis, metricSet int, hashes *hashTable, options decodeOptions) (candidateDecode, bool) {

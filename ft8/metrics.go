@@ -24,11 +24,6 @@ type candidateAnalysis struct {
 	PowerMetrics softMetrics
 }
 
-func analyzeCandidate(dd []float32, cand candidate) candidateAnalysis {
-	ds := newDownsampler()
-	return analyzeCandidateWithDownsampler(dd, ds, cand, true)
-}
-
 func analyzeCandidateWithDownsampler(dd []float32, ds *downsampler, cand candidate, recompute bool) candidateAnalysis {
 	return analyzeCandidateWithDownsamplerForMetricSet(dd, ds, cand, recompute, 2)
 }
@@ -172,50 +167,6 @@ func normalizeMetric(metric *[174]float64) {
 	for i := range metric {
 		metric[i] /= scale
 	}
-}
-
-func llrPasses(metrics softMetrics) [5][174]float64 {
-	var out [5][174]float64
-	sources := [5][174]float64{metrics.Single, metrics.Double, metrics.Triple, metrics.Normed, metrics.Best}
-	for pass := range sources {
-		for i, v := range sources[pass] {
-			out[pass][i] = ft8ScaleFac * v
-		}
-	}
-	return out
-}
-
-func llrPassesWithCQAP(metrics softMetrics) [7][174]float64 {
-	var out [7][174]float64
-	regular := llrPasses(metrics)
-	copy(out[:5], regular[:])
-	out[5] = apCQPass(metrics.Single)
-	out[6] = apCQPass(metrics.Triple)
-	return out
-}
-
-type decoderPass struct {
-	LLR    [174]float64
-	APMask [174]int8
-}
-
-func analysisLLRPasses(analysis candidateAnalysis) [14]decoderPass {
-	var out [14]decoderPass
-	regular := llrPassesWithCQAP(analysis.Metrics)
-	power := llrPassesWithCQAP(analysis.PowerMetrics)
-	for i, llr := range regular {
-		out[i].LLR = llr
-		if i >= 5 {
-			out[i].APMask = cqAPMask()
-		}
-	}
-	for i, llr := range power {
-		out[i+7].LLR = llr
-		if i >= 5 {
-			out[i+7].APMask = cqAPMask()
-		}
-	}
-	return out
 }
 
 func apCQPass(metric [174]float64) [174]float64 {

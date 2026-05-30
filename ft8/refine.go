@@ -130,11 +130,6 @@ func cshift(in []complex128, shift int) []complex128 {
 	return out
 }
 
-func refineCandidateWithDownsampler(dd []float32, ds *downsampler, cand candidate, recompute bool) refinedCandidate {
-	refined, _, _ := refineCandidateDetails(dd, ds, cand, recompute)
-	return refined
-}
-
 func refineCandidateDetails(dd []float32, ds *downsampler, cand candidate, recompute bool) (refinedCandidate, []complex128, int) {
 	f1 := cand.FreqHz
 	cd0 := ds.downsample(dd, recompute, f1)

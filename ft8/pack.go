@@ -237,9 +237,7 @@ func solveCRC14(target int) int {
 			}
 		}
 		if pivot < 0 {
-			// The fixed CRC generator submatrix is invertible; this only guards
-			// against accidental table changes.
-			return 0
+			panic("crc14: singular generator submatrix")
 		}
 		if pivot != col {
 			rows[col], rows[pivot] = rows[pivot], rows[col]

@@ -14,10 +14,6 @@ type candidate struct {
 	Sync   float64
 }
 
-func findDefaultCandidates(dd []float32, minFreqHz, maxFreqHz int) []candidate {
-	return findCandidates(dd, minFreqHz, maxFreqHz, ft8DefaultSyncMin, 0, ft8DefaultMaxCand)
-}
-
 func findCandidates(dd []float32, minFreqHz, maxFreqHz int, syncMin float64, qsoFreqHz int, maxCandidates int) []candidate {
 	const (
 		maxPreCand = 1000

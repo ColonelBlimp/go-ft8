@@ -25,10 +25,6 @@ type hashTable struct {
 	calls22 []hashEntry
 }
 
-func unpack77FromCodeword(cw [174]int8) (string, bool) {
-	return unpack77FromCodewordWithHashes(cw, nil)
-}
-
 func unpack77FromCodewordWithHashes(cw [174]int8, hashes *hashTable) (string, bool) {
 	return unpack77WithHashes(cw[:77], hashes)
 }
