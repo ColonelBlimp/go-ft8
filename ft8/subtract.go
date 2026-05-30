@@ -6,8 +6,6 @@ package ft8
 import (
 	"math"
 	"sync"
-
-	"gonum.org/v1/gonum/dsp/fourier"
 )
 
 const (
@@ -38,13 +36,10 @@ var (
 )
 
 type subtractScratch struct {
-	camp     []complex128
-	spec     []complex128
-	cref     []complex128
-	dphi     []float64
-	residual []float64
-	realFFT  *fourier.FFT
-	realSpec []complex128
+	camp []complex128
+	spec []complex128
+	cref []complex128
+	dphi []float64
 }
 
 func tonesFromCodeword(cw [174]int8) [ft8Symbols]int {
@@ -67,95 +62,42 @@ func tonesFromCodeword(cw [174]int8) [ft8Symbols]int {
 	return tones
 }
 
-func subtractFT8(dd []float32, tones [ft8Symbols]int, f0 float64, dtSec float64, refineTime bool) {
+func subtractFT8(dd []float32, tones [ft8Symbols]int, f0 float64, dtSec float64) {
 	subtractOnce.Do(initSubtractFilter)
 	scratch := subtractScratchPool.Get().(*subtractScratch)
 	defer subtractScratchPool.Put(scratch)
 
 	cref := genFT8WaveComplexInto(tones, f0, scratch.cref, scratch.dphi)
-	sqf := func(idt int, apply bool) float64 {
-		nstart := nint(dtSec*wantSampleRate) + idt
-		camp := scratch.camp[:ft8SubtractFFT]
-		clear(camp)
-		if refineTime {
-			clear(scratch.residual)
-		}
-		for i := 0; i < ft8SignalSamples; i++ {
-			j := nstart + i
-			if j >= 0 && j < len(dd) {
-				camp[i] = complex(float64(dd[j]), 0) * complex(real(cref[i]), -imag(cref[i]))
-			}
-		}
-
-		spec := subtractFFT.Coefficients(scratch.spec[:ft8SubtractFFT], camp)
-		for i := range spec {
-			spec[i] *= subtractFilterSpectrum[i]
-		}
-		cfilt := subtractFFT.Sequence(spec, spec)
-		for i := 0; i <= ft8SubtractFilter/2; i++ {
-			cfilt[i] *= complex(subtractEndCorrection[i], 0)
-			j := ft8SignalSamples - 1 - i
-			if j >= 0 {
-				cfilt[j] *= complex(subtractEndCorrection[i], 0)
-			}
-		}
-
-		for i := 0; i < ft8SignalSamples; i++ {
-			j := nstart + i
-			if j >= 0 && j < len(dd) {
-				z := cfilt[i] * cref[i]
-				value := float64(dd[j]) - 2*real(z)
-				if apply {
-					dd[j] = float32(value)
-				}
-				if refineTime {
-					scratch.residual[i] = value
-				}
-			}
-		}
-
-		if !refineTime {
-			return 0
-		}
-		if scratch.realFFT == nil {
-			scratch.realFFT = fourier.NewFFT(ft8SubtractFFT)
-			scratch.realSpec = make([]complex128, ft8SubtractFFT/2+1)
-		}
-		rx := scratch.realFFT.Coefficients(scratch.realSpec, scratch.residual)
-		df := float64(wantSampleRate) / float64(ft8SubtractFFT)
-		ia := int((f0 - 1.5*6.25) / df)
-		ib := int((f0 + 8.5*6.25) / df)
-		if ia < 0 {
-			ia = 0
-		}
-		if ib >= len(rx) {
-			ib = len(rx) - 1
-		}
-		var score float64
-		for i := ia; i <= ib; i++ {
-			score += real(rx[i])*real(rx[i]) + imag(rx[i])*imag(rx[i])
-		}
-		return score
-	}
-
-	idt := 0
-	if refineTime {
-		if scratch.residual == nil {
-			scratch.residual = make([]float64, ft8SubtractFFT)
-		}
-		sqa := sqf(-90, false)
-		sq0 := sqf(0, false)
-		sqb := sqf(90, false)
-		den := sqb + sqa - 2*sq0
-		if den != 0 {
-			dx := -(sqb - sqa) / (2 * den)
-			if math.Abs(dx) > 1 {
-				return
-			}
-			idt = nint(90 * dx)
+	nstart := nint(dtSec * wantSampleRate)
+	camp := scratch.camp[:ft8SubtractFFT]
+	clear(camp)
+	for i := 0; i < ft8SignalSamples; i++ {
+		j := nstart + i
+		if j >= 0 && j < len(dd) {
+			camp[i] = complex(float64(dd[j]), 0) * complex(real(cref[i]), -imag(cref[i]))
 		}
 	}
-	_ = sqf(idt, true)
+
+	spec := subtractFFT.Coefficients(scratch.spec[:ft8SubtractFFT], camp)
+	for i := range spec {
+		spec[i] *= subtractFilterSpectrum[i]
+	}
+	cfilt := subtractFFT.Sequence(spec, spec)
+	for i := 0; i <= ft8SubtractFilter/2; i++ {
+		cfilt[i] *= complex(subtractEndCorrection[i], 0)
+		j := ft8SignalSamples - 1 - i
+		if j >= 0 {
+			cfilt[j] *= complex(subtractEndCorrection[i], 0)
+		}
+	}
+
+	for i := 0; i < ft8SignalSamples; i++ {
+		j := nstart + i
+		if j >= 0 && j < len(dd) {
+			z := cfilt[i] * cref[i]
+			dd[j] = float32(float64(dd[j]) - 2*real(z))
+		}
+	}
 }
 
 func initSubtractFilter() {
@@ -189,10 +131,6 @@ func initSubtractFilter() {
 			subtractEndCorrection[j] = 1 / den
 		}
 	}
-}
-
-func genFT8WaveComplex(tones [ft8Symbols]int, f0 float64) []complex128 {
-	return genFT8WaveComplexInto(tones, f0, nil, nil)
 }
 
 func genFT8WaveComplexInto(tones [ft8Symbols]int, f0 float64, out []complex128, dphi []float64) []complex128 {

@@ -33,10 +33,6 @@ func unpack77FromCodewordWithHashes(cw [174]int8, hashes *hashTable) (string, bo
 	return unpack77WithHashes(cw[:77], hashes)
 }
 
-func unpack77(bits []int8) (string, bool) {
-	return unpack77WithHashes(bits, nil)
-}
-
 func unpack77WithHashes(bits []int8, hashes *hashTable) (string, bool) {
 	if len(bits) < 77 {
 		return "", false
@@ -172,10 +168,6 @@ func unpackFreeText(bits []int8) (string, bool) {
 	}
 	msg := strings.TrimSpace(string(out))
 	return msg, msg != ""
-}
-
-func unpack28(n28 int) (string, bool) {
-	return unpack28WithHashes(n28, nil)
 }
 
 func unpack28WithHashes(n28 int, hashes *hashTable) (string, bool) {

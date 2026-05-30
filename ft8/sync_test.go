@@ -625,3 +625,8 @@ func normalizeTruthText(s string) string {
 	}
 	return strings.Join(fields, " ")
 }
+
+func decode17491BPOnly(llr [174]float64) (ldpcResult, bool) {
+	result, ok, _ := decode17491BP(llr, [174]int8{}, 0)
+	return result, ok
+}

@@ -12,8 +12,6 @@ const (
 	BitsPerSample = 16
 
 	wantSampleRate = SampleRate
-	wantChannels   = Channels
-	wantBitsPerSam = BitsPerSample
 )
 
 // decodeBlocks builds the FT8 float32 working array from raw int16 PCM samples.

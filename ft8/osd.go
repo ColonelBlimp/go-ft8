@@ -14,10 +14,6 @@ var (
 	osdGenRows [91][174]int8
 )
 
-func decode17491Hybrid(llr [174]float64) (ldpcResult, bool) {
-	return decode17491HybridWithAP(llr, [174]int8{})
-}
-
 func decode17491HybridWithAP(llr [174]float64, apmask [174]int8) (ldpcResult, bool) {
 	result, ok, saved := decode17491BP(llr, apmask, 2)
 	if ok {

@@ -13,11 +13,6 @@ type ldpcResult struct {
 	Decoder    int
 }
 
-func decode17491BPOnly(llr [174]float64) (ldpcResult, bool) {
-	result, ok, _ := decode17491BP(llr, [174]int8{}, 0)
-	return result, ok
-}
-
 func decode17491BP(llr [174]float64, apmask [174]int8, saveCount int) (ldpcResult, bool, [][174]float64) {
 	var result ldpcResult
 	var llr32 [174]float32
@@ -132,20 +127,6 @@ func hardDecisionAndParity(zn [174]float32) ([174]int8, int) {
 		unsatisfied += int(bit)
 	}
 	return cw, unsatisfied
-}
-
-func parityFailures(cw [174]int8) int {
-	failures := 0
-	for check := 0; check < 83; check++ {
-		sum := 0
-		for edge := 0; edge < ldpcNrw[check]; edge++ {
-			sum += int(cw[ldpcNm[check][edge]])
-		}
-		if sum%2 != 0 {
-			failures++
-		}
-	}
-	return failures
 }
 
 func crc14OK(cw [174]int8) bool {

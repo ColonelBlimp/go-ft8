@@ -218,18 +218,6 @@ func analysisLLRPasses(analysis candidateAnalysis) [14]decoderPass {
 	return out
 }
 
-func analysisLLRPassesForMetricSet(analysis candidateAnalysis, metricSet int) []decoderPass {
-	all := analysisLLRPasses(analysis)
-	switch metricSet {
-	case 0:
-		return all[:7]
-	case 1:
-		return all[7:]
-	default:
-		return all[:]
-	}
-}
-
 func apCQPass(metric [174]float64) [174]float64 {
 	var llr [174]float64
 	maxAbs := 0.0

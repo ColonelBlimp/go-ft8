@@ -10,6 +10,7 @@ import "github.com/ColonelBlimp/go-ft8/internal/pfft"
 type realFFTPlan struct {
 	plan *pfft.RealPlan
 	n    int
+	work []float64
 }
 
 func newRealFFTPlan(n int) *realFFTPlan {
@@ -17,7 +18,11 @@ func newRealFFTPlan(n int) *realFFTPlan {
 	if err != nil {
 		panic(err)
 	}
-	return &realFFTPlan{plan: plan, n: n}
+	return &realFFTPlan{
+		plan: plan,
+		n:    n,
+		work: make([]float64, n),
+	}
 }
 
 func (p *realFFTPlan) Coefficients(dst []complex128, seq []float64) []complex128 {
@@ -38,17 +43,14 @@ func (p *realFFTPlan) coefficientsRange(dst []complex128, seq []float64, firstBi
 	} else if len(dst) != want {
 		panic("real fft: destination length mismatch")
 	}
-	if err := p.plan.Forward(seq); err != nil {
+	clear(dst)
+	copy(p.work, seq)
+	if err := p.plan.Forward(p.work); err != nil {
 		panic(err)
 	}
-	if firstBin < 0 {
-		firstBin = 0
-	}
-	if lastBin >= len(dst) {
-		lastBin = len(dst) - 1
-	}
+	firstBin, lastBin = clampFFTBinRange(firstBin, lastBin, want)
 	for k := firstBin; k <= lastBin; k++ {
-		dst[k] = p.plan.Bin(seq, k)
+		dst[k] = p.plan.Bin(p.work, k)
 	}
 	return dst
 }

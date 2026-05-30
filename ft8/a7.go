@@ -31,6 +31,8 @@ func NewDecoderWithOptions(options DecoderOptions) *Decoder {
 // DecodeMessages decodes one 15-second FT8 slot from 12 kHz mono signed-16-bit
 // PCM samples, using state retained from prior calls for hash and A7 hints.
 func (d *Decoder) DecodeMessages(iwave []int16) []DecodedMessage {
+	// FT8 alternates transmit periods, so A7 hints are keyed by parity and come
+	// from the previous slot with the same even/odd cadence.
 	hints := d.history[d.seq]
 	out := decodeMessagesCore(iwave, hints, &d.hashes, d.options)
 	d.history[d.seq] = collectA7Hints(out)

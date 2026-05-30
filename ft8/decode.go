@@ -44,6 +44,8 @@ func decodeMessagesCore(iwave []int16, a7Hints []a7Hint, hashes *hashTable, opti
 		blocks := options.blocks[blockIndex]
 		dd := decodeBlocks(iwave, blocks)
 		if blocks == 50 {
+			// Keep the full-slot buffer after subtraction; A7 hints use the
+			// residual so strong decoded signals do not mask weak follow-ups.
 			fullDD = dd
 		}
 		for pass := 0; pass < 2; pass++ {
@@ -81,7 +83,7 @@ func decodeMessagesCore(iwave []int16, a7Hints []a7Hint, hashes *hashTable, opti
 				break
 			}
 			for i, msg := range subtract {
-				subtractFT8(dd, tonesFromCodeword(subtractCodewords[i]), msg.FreqHz, msg.DTSec+0.5, false)
+				subtractFT8(dd, tonesFromCodeword(subtractCodewords[i]), msg.FreqHz, msg.DTSec+0.5)
 			}
 		}
 	}
@@ -113,40 +115,11 @@ func decodeCandidateVariantsForMetricSetNoHashes(dd []float32, ds *downsampler, 
 }
 
 func decodeCandidateVariantsForMetricSet(dd []float32, ds *downsampler, cand candidate, recompute bool, metricSet int, hashes *hashTable, options decodeOptions) (candidateAnalysis, candidateDecode, bool) {
-	offsets := [...]float64{0}
-	freqOffsets := [...]float64{0}
-	var bestAnalysis candidateAnalysis
-	var bestDecode candidateDecode
-	bestQuality := 1e99
-	decoded := false
-	first := true
-	for _, freqOffset := range freqOffsets {
-		for _, offset := range offsets {
-			c := cand
-			c.FreqHz += freqOffset
-			c.DTSec += offset
-			analysis := analyzeCandidateWithDownsamplerForMetricSet(dd, ds, c, recompute && first, metricSet)
-			first = false
-			candidateDecode, ok := decodeCandidateWithMetricSet(analysis, metricSet, hashes, options)
-			if ok {
-				quality := float64(candidateDecode.Result.HardErrors) + candidateDecode.Result.DMin
-				if !decoded || quality < bestQuality {
-					bestAnalysis = analysis
-					bestDecode = candidateDecode
-					bestQuality = quality
-					decoded = true
-				}
-				continue
-			}
-			if bestAnalysis.candidate == (candidate{}) || analysis.Refined.HardSync > bestAnalysis.Refined.HardSync {
-				bestAnalysis = analysis
-			}
-		}
+	analysis := analyzeCandidateWithDownsamplerForMetricSet(dd, ds, cand, recompute, metricSet)
+	if decoded, ok := decodeCandidateWithMetricSet(analysis, metricSet, hashes, options); ok {
+		return analysis, decoded, true
 	}
-	if decoded {
-		return bestAnalysis, bestDecode, true
-	}
-	return bestAnalysis, candidateDecode{}, false
+	return analysis, candidateDecode{}, false
 }
 
 func decodeCandidate(analysis candidateAnalysis) (candidateDecode, bool) {

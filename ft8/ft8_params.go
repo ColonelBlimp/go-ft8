@@ -4,10 +4,9 @@
 package ft8
 
 const (
-	ft8KInfoBits = 91
-	ft8DataSyms  = 58
-	ft8SyncSyms  = 21
-	ft8Symbols   = ft8DataSyms + ft8SyncSyms
+	ft8DataSyms = 58
+	ft8SyncSyms = 21
+	ft8Symbols  = ft8DataSyms + ft8SyncSyms
 
 	ft8SamplesPerSymbol = 1920
 	ft8FrameSamples     = wantSampleRate * 15
@@ -29,9 +28,3 @@ const (
 )
 
 var ft8Costas = [7]int{3, 1, 4, 0, 6, 5, 2}
-
-const (
-	sgNFFT  = ft8NFFT1
-	sgStep  = ft8Step
-	sgNBins = ft8NBins
-)

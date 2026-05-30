@@ -130,11 +130,6 @@ func cshift(in []complex128, shift int) []complex128 {
 	return out
 }
 
-func refineCandidate(dd []float32, cand candidate) refinedCandidate {
-	ds := newDownsampler()
-	return refineCandidateWithDownsampler(dd, ds, cand, true)
-}
-
 func refineCandidateWithDownsampler(dd []float32, ds *downsampler, cand candidate, recompute bool) refinedCandidate {
 	refined, _, _ := refineCandidateDetails(dd, ds, cand, recompute)
 	return refined
@@ -264,30 +259,6 @@ func complexPower(z complex128) float64 {
 	return real(z)*real(z) + imag(z)*imag(z)
 }
 
-func tweakFreq1(ca []complex128, npts int, sampleRate float64, a [5]float64) []complex128 {
-	if npts > len(ca) {
-		npts = len(ca)
-	}
-	cb := make([]complex128, npts)
-	w := complex(1, 0)
-	x0 := 0.5 * float64(npts+1)
-	scale := 2.0 / float64(npts)
-	for i := 1; i <= npts; i++ {
-		x := scale * (float64(i) - x0)
-		p2 := 1.5*x*x - 0.5
-		p3 := 2.5*x*x*x - 1.5*x
-		p4 := 4.375*x*x*x*x - 3.75*x*x + 0.375
-		dphi := (a[0] + x*a[1] + p2*a[2] + p3*a[3] + p4*a[4]) * (2 * math.Pi / sampleRate)
-		w *= complex(math.Cos(dphi), math.Sin(dphi))
-		cb[i-1] = w * ca[i-1]
-	}
-	return cb
-}
-
-func symbolSpectra(cd0 []complex128, start int) ([8][ft8Symbols]complex128, [8][ft8Symbols]float64) {
-	return newDownsampler().symbolSpectra(cd0, start)
-}
-
 func (d *downsampler) symbolSpectra(cd0 []complex128, start int) ([8][ft8Symbols]complex128, [8][ft8Symbols]float64) {
 	var cs [8][ft8Symbols]complex128
 	var s8 [8][ft8Symbols]float64
@@ -321,10 +292,6 @@ func makeSymbolToneWaveforms() [8][32]complex128 {
 		}
 	}
 	return out
-}
-
-func hardSync(s8 [8][ft8Symbols]float64) int {
-	return costasEvidence(s8).Wins
 }
 
 type costasEvidenceResult struct {
@@ -382,16 +349,6 @@ func costasToneRatio(s8 [8][ft8Symbols]float64, sym int, targetTone int) (float6
 		return 1, false
 	}
 	return target / bestOther, target > bestOther
-}
-
-func maxTone(s8 [8][ft8Symbols]float64, sym int) int {
-	best := 0
-	for tone := 1; tone < 8; tone++ {
-		if s8[tone][sym] > s8[best][sym] {
-			best = tone
-		}
-	}
-	return best
 }
 
 func cmplxAbs(z complex128) float64 {
