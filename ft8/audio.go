@@ -14,8 +14,8 @@ const (
 	wantSampleRate = SampleRate
 )
 
-// decodeBlocks builds the FT8 float32 working array from raw int16 PCM samples.
-// The decoder currently uses the full 50-block, 180000-sample path.
+// decodeBlocks builds the zero-padded FT8 float32 working array from raw int16
+// PCM samples.
 func decodeBlocks(iwave []int16, blocks int) []float32 {
 	const nBuf = 180000
 	nCopy := blocks * 3456
@@ -25,16 +25,8 @@ func decodeBlocks(iwave []int16, blocks int) []float32 {
 	if nCopy > len(iwave) {
 		nCopy = len(iwave)
 	}
-	itmp := make([]int16, nBuf)
-	copy(itmp[:nCopy], iwave[:nCopy])
-	return toFloat32(itmp)
-}
-
-// toFloat32 converts raw signed-16-bit PCM samples to float32 element-wise
-// without normalization. int16 values are exactly representable as float32.
-func toFloat32(in []int16) []float32 {
-	out := make([]float32, len(in))
-	for i, s := range in {
+	out := make([]float32, nBuf)
+	for i, s := range iwave[:nCopy] {
 		out[i] = float32(s)
 	}
 	return out

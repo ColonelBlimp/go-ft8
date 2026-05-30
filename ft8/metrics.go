@@ -246,8 +246,13 @@ func apCQPass(metric [174]float64) [174]float64 {
 }
 
 var ft8APCQBits = [29]int8{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0}
+var ft8CQAPMask = initCQAPMask()
 
 func cqAPMask() [174]int8 {
+	return ft8CQAPMask
+}
+
+func initCQAPMask() [174]int8 {
 	var mask [174]int8
 	for i := 0; i < 29; i++ {
 		mask[i] = 1

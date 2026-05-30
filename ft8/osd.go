@@ -39,7 +39,7 @@ func osd17491(rx [174]float64, channel [174]float64, apmask [174]int8) (ldpcResu
 
 	var hard [n]int8
 	var absrx [n]float64
-	order := make([]int, n)
+	var order [n]int
 	for i, v := range rx {
 		if v >= 0 {
 			hard[i] = 1
@@ -47,7 +47,7 @@ func osd17491(rx [174]float64, channel [174]float64, apmask [174]int8) (ldpcResu
 		absrx[i] = math.Abs(v)
 		order[i] = i
 	}
-	sort.Slice(order, func(i, j int) bool {
+	sort.Slice(order[:], func(i, j int) bool {
 		if absrx[order[i]] == absrx[order[j]] {
 			return order[i] < order[j]
 		}
@@ -113,7 +113,8 @@ func osd17491(rx [174]float64, channel [174]float64, apmask [174]int8) (ldpcResu
 
 	var m0 [k]int8
 	copy(m0[:], rhard[:k])
-	best := mrbEncode(m0, g2)
+	baseCode := mrbEncode(m0, g2)
+	best := baseCode
 	bestXor := xorWeight(best[:], rhard[:])
 	bestDistance := weightedDistance(best[:], rhard[:], rabs[:])
 
@@ -123,42 +124,44 @@ func osd17491(rx [174]float64, channel [174]float64, apmask [174]int8) (ldpcResu
 		var cached bool
 
 		for flip := base; flip >= 0; flip-- {
-			me := m0
-			me[base] ^= 1
-			if flip != base {
-				me[flip] ^= 1
-			}
 			if rapmask[base] == 1 || flip != base && rapmask[flip] == 1 {
 				continue
 			}
 
+			var ce [n]int8
 			var e2 [n - k]int8
 			nd1kpt := 0
 			if flip == base || !cached {
-				ce := mrbEncode(me, g2)
-				for i := 0; i < n-k; i++ {
-					e2sub[i] = ce[k+i] ^ rhard[k+i]
-					e2[i] = e2sub[i]
+				ce = mrbEncodeFlipped(baseCode, g2, base, flip)
+				nd1kpt = 1
+				for i := 0; i < nt; i++ {
+					bit := ce[k+i] ^ rhard[k+i]
+					e2sub[i] = bit
+					e2[i] = bit
+					nd1kpt += int(bit)
 				}
-				d1 = 0
-				for i := 0; i < k; i++ {
-					if me[i] != rhard[i] {
-						d1 += rabs[i]
-					}
+				for i := nt; i < n-k; i++ {
+					bit := ce[k+i] ^ rhard[k+i]
+					e2sub[i] = bit
+					e2[i] = bit
 				}
-				nd1kpt = sumBits(e2sub[:nt]) + 1
+				d1 = rabs[base]
 				cached = true
 			} else {
-				for i := 0; i < n-k; i++ {
+				nd1kpt = 2
+				for i := 0; i < nt; i++ {
+					bit := e2sub[i] ^ g2[k+i][flip]
+					e2[i] = bit
+					nd1kpt += int(bit)
+				}
+				for i := nt; i < n-k; i++ {
 					e2[i] = e2sub[i] ^ g2[k+i][flip]
 				}
-				nd1kpt = sumBits(e2[:nt]) + 2
 			}
 
 			if nd1kpt > ntheta {
 				continue
 			}
-			ce := mrbEncode(me, g2)
 			var distance float64
 			if flip == base {
 				distance = d1
@@ -169,7 +172,8 @@ func osd17491(rx [174]float64, channel [174]float64, apmask [174]int8) (ldpcResu
 				}
 			} else {
 				distance = d1
-				if ce[flip] != rhard[flip] {
+				ceFlip := baseCode[flip] ^ g2[flip][base] ^ g2[flip][flip]
+				if ceFlip != rhard[flip] {
 					distance += rabs[flip]
 				}
 				for i := 0; i < n-k; i++ {
@@ -179,6 +183,9 @@ func osd17491(rx [174]float64, channel [174]float64, apmask [174]int8) (ldpcResu
 				}
 			}
 			if distance < bestDistance {
+				if flip != base {
+					ce = mrbEncodeFlipped(baseCode, g2, base, flip)
+				}
 				bestDistance = distance
 				best = ce
 				bestXor = xorWeight(best[:], rhard[:])
@@ -201,6 +208,19 @@ func osd17491(rx [174]float64, channel [174]float64, apmask [174]int8) (ldpcResu
 	result.DMin = softDistance(cw, channel)
 	result.Decoder = 2
 	return result, true
+}
+
+func mrbEncodeFlipped(base [174]int8, g2 [174][91]int8, bit1, bit2 int) [174]int8 {
+	codeword := base
+	for i := 0; i < 174; i++ {
+		codeword[i] ^= g2[i][bit1]
+	}
+	if bit2 != bit1 {
+		for i := 0; i < 174; i++ {
+			codeword[i] ^= g2[i][bit2]
+		}
+	}
+	return codeword
 }
 
 func mrbEncode(message [91]int8, g2 [174][91]int8) [174]int8 {
@@ -245,14 +265,6 @@ func weightedDistance(a []int8, b []int8, weights []float64) float64 {
 		}
 	}
 	return d
-}
-
-func sumBits(bits []int8) int {
-	sum := 0
-	for _, bit := range bits {
-		sum += int(bit)
-	}
-	return sum
 }
 
 func initOSDGenerator() {

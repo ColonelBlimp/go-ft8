@@ -70,12 +70,23 @@ func subtractFT8(dd []float32, tones [ft8Symbols]int, f0 float64, dtSec float64)
 	cref := genFT8WaveComplexInto(tones, f0, scratch.cref, scratch.dphi)
 	nstart := nint(dtSec * wantSampleRate)
 	camp := scratch.camp[:ft8SubtractFFT]
-	clear(camp)
-	for i := 0; i < ft8SignalSamples; i++ {
-		j := nstart + i
-		if j >= 0 && j < len(dd) {
-			camp[i] = complex(float64(dd[j]), 0) * complex(real(cref[i]), -imag(cref[i]))
-		}
+	validStart := 0
+	if nstart < 0 {
+		validStart = -nstart
+	}
+	validEnd := ft8SignalSamples
+	if end := len(dd) - nstart; end < validEnd {
+		validEnd = end
+	}
+	if validStart >= validEnd {
+		return
+	}
+	clear(camp[:validStart])
+	clear(camp[validEnd:])
+	for i := validStart; i < validEnd; i++ {
+		sample := float64(dd[nstart+i])
+		ref := cref[i]
+		camp[i] = complex(sample*real(ref), -sample*imag(ref))
 	}
 
 	spec := subtractFFT.Coefficients(scratch.spec[:ft8SubtractFFT], camp)
@@ -91,12 +102,10 @@ func subtractFT8(dd []float32, tones [ft8Symbols]int, f0 float64, dtSec float64)
 		}
 	}
 
-	for i := 0; i < ft8SignalSamples; i++ {
+	for i := validStart; i < validEnd; i++ {
 		j := nstart + i
-		if j >= 0 && j < len(dd) {
-			z := cfilt[i] * cref[i]
-			dd[j] = float32(float64(dd[j]) - 2*real(z))
-		}
+		z := cfilt[i] * cref[i]
+		dd[j] = float32(float64(dd[j]) - 2*real(z))
 	}
 }
 
