@@ -1,7 +1,7 @@
 # go-ft8
 
-`go-ft8` is a Go research implementation of an FT8 decoder. It decodes one
-15-second FT8 slot from 12 kHz mono signed 16-bit PCM audio and exposes both a
+`go-ft8` is a Go implementation of an FT8 decoder. It decodes one
+15-second FT8 slot from 12 kHz mono-signed 16-bit PCM audio and exposes both a
 strict decoder path and optional deeper experimental search modes.
 
 This repository is intended for decoder experimentation, parity work, profiling,
