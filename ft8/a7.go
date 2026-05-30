@@ -150,7 +150,7 @@ func decodeA7Hints(dd []float32, hints []a7Hint, seen map[string]bool) []Decoded
 		cand := candidate{FreqHz: hint.FreqHz, DTSec: hint.DTSec, Sync: 99}
 		analysis := analyzeCandidateWithDownsampler(dd, ds, cand, recompute)
 		recompute = false
-		decoded, ok := decodeA7Candidate(analysis, hint, cache)
+		decoded, ok := decodeA7Candidate(&analysis, hint, cache)
 		if !ok || seen[decoded.Text] {
 			continue
 		}
@@ -171,7 +171,7 @@ func decodeA7Hints(dd []float32, hints []a7Hint, seen map[string]bool) []Decoded
 	return out
 }
 
-func decodeA7Candidate(analysis candidateAnalysis, hint a7Hint, cache map[string][174]int8) (candidateDecode, bool) {
+func decodeA7Candidate(analysis *candidateAnalysis, hint a7Hint, cache map[string][174]int8) (candidateDecode, bool) {
 	if analysis.Refined.HardSync <= 6 {
 		return candidateDecode{}, false
 	}
@@ -198,7 +198,8 @@ func decodeA7Candidate(analysis candidateAnalysis, hint a7Hint, cache map[string
 		if !ok {
 			continue
 		}
-		for _, llr := range passes {
+		for passIndex := range passes {
+			llr := &passes[passIndex]
 			d := softDistance(cw, llr)
 			if d >= bestDistance {
 				if d < secondDistance {

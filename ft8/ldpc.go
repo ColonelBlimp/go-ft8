@@ -13,7 +13,7 @@ type ldpcResult struct {
 	Decoder    int
 }
 
-func decode17491BP(llr [174]float64, apmask [174]int8, saveCount int) (ldpcResult, bool, [][174]float64) {
+func decode17491BP(llr *[174]float64, apmask *[174]int8, saveCount int) (ldpcResult, bool, [][174]float64) {
 	var result ldpcResult
 	var llr32 [174]float32
 	var tov [174][3]float32
@@ -22,8 +22,8 @@ func decode17491BP(llr [174]float64, apmask [174]int8, saveCount int) (ldpcResul
 	var zn [174]float32
 	var zsum [174]float32
 	saved := make([][174]float64, 0, saveCount)
-	for bit, v := range llr {
-		llr32[bit] = float32(v)
+	for bit := 0; bit < 174; bit++ {
+		llr32[bit] = float32(llr[bit])
 	}
 
 	for check := 0; check < 83; check++ {
@@ -169,7 +169,7 @@ func crc14Step(state uint16, bit int8) uint16 {
 	return (state << 1) & 0x7fff
 }
 
-func hardErrors(cw [174]int8, llr [174]float64) int {
+func hardErrors(cw [174]int8, llr *[174]float64) int {
 	errs := 0
 	for i, bit := range cw {
 		sign := -1.0
@@ -183,7 +183,7 @@ func hardErrors(cw [174]int8, llr [174]float64) int {
 	return errs
 }
 
-func softDistance(cw [174]int8, llr [174]float64) float64 {
+func softDistance(cw [174]int8, llr *[174]float64) float64 {
 	var d float64
 	for i, bit := range cw {
 		hard := int8(0)

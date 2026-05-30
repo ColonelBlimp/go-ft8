@@ -43,10 +43,12 @@ func decodeMessagesCore(iwave []int16, a7Hints []a7Hint, hashes *hashTable, opti
 	for blockIndex := 0; blockIndex < options.blockCount; blockIndex++ {
 		blocks := options.blocks[blockIndex]
 		dd := decodeBlocks(iwave, blocks)
-		if blocks == 50 {
+		keepDD := false
+		if blocks == 50 && len(a7Hints) > 0 {
 			// Keep the full-slot buffer after subtraction; A7 hints use the
 			// residual so strong decoded signals do not mask weak follow-ups.
 			fullDD = dd
+			keepDD = true
 		}
 		for pass := 0; pass < 2; pass++ {
 			candidates := findCandidates(dd, options.minFreqHz, options.maxFreqHz, options.syncMin, 0, options.maxCandidates)
@@ -86,9 +88,15 @@ func decodeMessagesCore(iwave []int16, a7Hints []a7Hint, hashes *hashTable, opti
 				subtractFT8(dd, tonesFromCodeword(subtractCodewords[i]), msg.FreqHz, msg.DTSec+0.5)
 			}
 		}
+		if !keepDD {
+			putDecodeBlocks(dd)
+		}
 	}
 	if len(a7Hints) > 0 && fullDD != nil {
 		out = append(out, decodeA7Hints(fullDD, a7Hints, seen)...)
+	}
+	if fullDD != nil {
+		putDecodeBlocks(fullDD)
 	}
 	return out
 }
@@ -100,13 +108,13 @@ type candidateDecode struct {
 
 func decodeCandidateVariantsForMetricSet(dd []float32, ds *downsampler, cand candidate, recompute bool, metricSet int, hashes *hashTable, options decodeOptions) (candidateAnalysis, candidateDecode, bool) {
 	analysis := analyzeCandidateWithDownsamplerForMetricSet(dd, ds, cand, recompute, metricSet)
-	if decoded, ok := decodeCandidateWithMetricSet(analysis, metricSet, hashes, options); ok {
+	if decoded, ok := decodeCandidateWithMetricSet(&analysis, metricSet, hashes, options); ok {
 		return analysis, decoded, true
 	}
 	return analysis, candidateDecode{}, false
 }
 
-func decodeCandidateWithMetricSet(analysis candidateAnalysis, metricSet int, hashes *hashTable, options decodeOptions) (candidateDecode, bool) {
+func decodeCandidateWithMetricSet(analysis *candidateAnalysis, metricSet int, hashes *hashTable, options decodeOptions) (candidateDecode, bool) {
 	if analysis.Refined.HardSync <= options.hardSyncMin {
 		return candidateDecode{}, false
 	}
@@ -141,7 +149,7 @@ func passesCostasGate(refined refinedCandidate, options decodeOptions) bool {
 
 func decodeCandidateMetrics(metrics *softMetrics, hashes *hashTable, options decodeOptions) (candidateDecode, bool) {
 	for pass := 0; pass < 5; pass++ {
-		if decoded, ok := decodeMetricPass(metricPassSource(metrics, pass), [174]int8{}, hashes, options); ok {
+		if decoded, ok := decodeMetricPass(metricPassSource(metrics, pass), &ft8NoAPMask, hashes, options); ok {
 			return decoded, true
 		}
 	}
@@ -167,19 +175,19 @@ func metricPassSource(metrics *softMetrics, pass int) *[174]float64 {
 	}
 }
 
-func decodeMetricPass(metric *[174]float64, apmask [174]int8, hashes *hashTable, options decodeOptions) (candidateDecode, bool) {
+func decodeMetricPass(metric *[174]float64, apmask *[174]int8, hashes *hashTable, options decodeOptions) (candidateDecode, bool) {
 	var llr [174]float64
 	for i, v := range metric {
 		llr[i] = ft8ScaleFac * v
 	}
 	shapeLLR(&llr, options)
-	return decodeLLRPass(llr, apmask, hashes, options)
+	return decodeLLRPass(&llr, apmask, hashes, options)
 }
 
-func decodeAPMetricPass(metric *[174]float64, apmask [174]int8, hashes *hashTable, options decodeOptions) (candidateDecode, bool) {
+func decodeAPMetricPass(metric *[174]float64, apmask *[174]int8, hashes *hashTable, options decodeOptions) (candidateDecode, bool) {
 	llr := apCQPass(*metric)
 	shapeLLR(&llr, options)
-	return decodeLLRPass(llr, apmask, hashes, options)
+	return decodeLLRPass(&llr, apmask, hashes, options)
 }
 
 func shapeLLR(llr *[174]float64, options decodeOptions) {
@@ -223,7 +231,7 @@ func winsorizeLLR(llr *[174]float64, factor float64) {
 	}
 }
 
-func decodeLLRPass(llr [174]float64, apmask [174]int8, hashes *hashTable, options decodeOptions) (candidateDecode, bool) {
+func decodeLLRPass(llr *[174]float64, apmask *[174]int8, hashes *hashTable, options decodeOptions) (candidateDecode, bool) {
 	var result ldpcResult
 	var ok bool
 	if options.enableOSD {

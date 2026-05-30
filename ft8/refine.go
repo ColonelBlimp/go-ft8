@@ -68,7 +68,7 @@ func (d *downsampler) downsample(dd []float32, recompute bool, f0 float64) []com
 		for i := 0; i < ft8FrameSamples && i < len(dd); i++ {
 			d.realInput[i] = float64(dd[i])
 		}
-		d.spectrum = d.realFFT.Coefficients(d.spectrum, d.realInput)
+		d.spectrum = d.realFFT.workCoefficients(d.spectrum, d.realInput)
 		d.initialized = true
 	}
 
@@ -267,14 +267,27 @@ func (d *downsampler) symbolSpectra(cd0 []complex128, start int) ([8][ft8Symbols
 					z += cd0[i1+i] * wave[i]
 				}
 				cs[tone][sym] = z / 1000
-				s8[tone][sym] = cmplxAbs(z)
+				if ft8CostasSymbolMask[sym] {
+					s8[tone][sym] = cmplxAbs(z)
+				}
 			}
 		}
 	}
 	return cs, s8
 }
 
+var ft8CostasSymbolMask = makeCostasSymbolMask()
 var symbolToneWaveforms = makeSymbolToneWaveforms()
+
+func makeCostasSymbolMask() [ft8Symbols]bool {
+	var out [ft8Symbols]bool
+	for k := 0; k < 7; k++ {
+		out[k] = true
+		out[k+36] = true
+		out[k+72] = true
+	}
+	return out
+}
 
 func makeSymbolToneWaveforms() [8][32]complex128 {
 	var out [8][32]complex128

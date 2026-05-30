@@ -36,9 +36,11 @@ type ft8SpectraScratch struct {
 }
 
 func newFT8SpectraScratch() *ft8SpectraScratch {
+	stride := ft8NSymbolSpectra + 1
+	specData := make([]float64, (ft8NBins+1)*stride)
 	spec := make([][]float64, ft8NBins+1)
 	for i := range spec {
-		spec[i] = make([]float64, ft8NSymbolSpectra+1)
+		spec[i] = specData[i*stride : (i+1)*stride]
 	}
 	return &ft8SpectraScratch{
 		fft:   newRealFFTPlan(ft8NFFT1),
@@ -70,9 +72,9 @@ func (s *ft8SpectraScratch) computeRange(dd []float32, firstBin, lastBin int) []
 				s.in[i] = float64(dd[idx]) * scale
 			}
 		}
-		s.fft.CoefficientsRange(s.coeff, s.in, firstBin, lastBin)
-		for i := firstBin; i <= lastBin && i < len(s.coeff); i++ {
-			s.spec[i][j] = real(s.coeff[i])*real(s.coeff[i]) + imag(s.coeff[i])*imag(s.coeff[i])
+		coeff := s.fft.workCoefficientsRange(s.coeff, s.in, firstBin, lastBin)
+		for i := firstBin; i <= lastBin && i < len(coeff); i++ {
+			s.spec[i][j] = real(coeff[i])*real(coeff[i]) + imag(coeff[i])*imag(coeff[i])
 		}
 	}
 	return s.spec

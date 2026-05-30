@@ -3,6 +3,8 @@
 
 package ft8
 
+import "sync"
+
 const (
 	// SampleRate is the required decoder input rate in Hz.
 	SampleRate = 12000
@@ -12,22 +14,37 @@ const (
 	BitsPerSample = 16
 
 	wantSampleRate = SampleRate
+
+	ft8DecodeBufferSamples = 180000
 )
+
+var decodeBlockPool = sync.Pool{
+	New: func() any {
+		return make([]float32, ft8DecodeBufferSamples)
+	},
+}
 
 // decodeBlocks builds the zero-padded FT8 float32 working array from raw int16
 // PCM samples.
 func decodeBlocks(iwave []int16, blocks int) []float32 {
-	const nBuf = 180000
 	nCopy := blocks * 3456
-	if nCopy > nBuf {
-		nCopy = nBuf
+	if nCopy > ft8DecodeBufferSamples {
+		nCopy = ft8DecodeBufferSamples
 	}
 	if nCopy > len(iwave) {
 		nCopy = len(iwave)
 	}
-	out := make([]float32, nBuf)
+	out := decodeBlockPool.Get().([]float32)
+	clear(out)
 	for i, s := range iwave[:nCopy] {
 		out[i] = float32(s)
 	}
 	return out
+}
+
+func putDecodeBlocks(dd []float32) {
+	if cap(dd) < ft8DecodeBufferSamples {
+		return
+	}
+	decodeBlockPool.Put(dd[:ft8DecodeBufferSamples])
 }

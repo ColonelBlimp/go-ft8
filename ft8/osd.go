@@ -14,20 +14,20 @@ var (
 	osdGenRows [91][174]int8
 )
 
-func decode17491HybridWithAP(llr [174]float64, apmask [174]int8) (ldpcResult, bool) {
+func decode17491HybridWithAP(llr *[174]float64, apmask *[174]int8) (ldpcResult, bool) {
 	result, ok, saved := decode17491BP(llr, apmask, 2)
 	if ok {
 		return result, true
 	}
-	for _, zn := range saved {
-		if osd, ok := osd17491(zn, llr, apmask); ok {
+	for i := range saved {
+		if osd, ok := osd17491(&saved[i], llr, apmask); ok {
 			return osd, true
 		}
 	}
 	return ldpcResult{}, false
 }
 
-func osd17491(rx [174]float64, channel [174]float64, apmask [174]int8) (ldpcResult, bool) {
+func osd17491(rx *[174]float64, channel *[174]float64, apmask *[174]int8) (ldpcResult, bool) {
 	osdGenOnce.Do(initOSDGenerator)
 
 	const (
@@ -113,7 +113,7 @@ func osd17491(rx [174]float64, channel [174]float64, apmask [174]int8) (ldpcResu
 
 	var m0 [k]int8
 	copy(m0[:], rhard[:k])
-	baseCode := mrbEncode(m0, g2)
+	baseCode := mrbEncode(m0, &g2)
 	best := baseCode
 	bestXor := xorWeight(best[:], rhard[:])
 	bestDistance := weightedDistance(best[:], rhard[:], rabs[:])
@@ -132,7 +132,7 @@ func osd17491(rx [174]float64, channel [174]float64, apmask [174]int8) (ldpcResu
 			var e2 [n - k]int8
 			nd1kpt := 0
 			if flip == base || !cached {
-				ce = mrbEncodeFlipped(baseCode, g2, base, flip)
+				ce = mrbEncodeFlipped(baseCode, &g2, base, flip)
 				nd1kpt = 1
 				for i := 0; i < nt; i++ {
 					bit := ce[k+i] ^ rhard[k+i]
@@ -184,7 +184,7 @@ func osd17491(rx [174]float64, channel [174]float64, apmask [174]int8) (ldpcResu
 			}
 			if distance < bestDistance {
 				if flip != base {
-					ce = mrbEncodeFlipped(baseCode, g2, base, flip)
+					ce = mrbEncodeFlipped(baseCode, &g2, base, flip)
 				}
 				bestDistance = distance
 				best = ce
@@ -210,7 +210,7 @@ func osd17491(rx [174]float64, channel [174]float64, apmask [174]int8) (ldpcResu
 	return result, true
 }
 
-func mrbEncodeFlipped(base [174]int8, g2 [174][91]int8, bit1, bit2 int) [174]int8 {
+func mrbEncodeFlipped(base [174]int8, g2 *[174][91]int8, bit1, bit2 int) [174]int8 {
 	codeword := base
 	for i := 0; i < 174; i++ {
 		codeword[i] ^= g2[i][bit1]
@@ -223,7 +223,7 @@ func mrbEncodeFlipped(base [174]int8, g2 [174][91]int8, bit1, bit2 int) [174]int
 	return codeword
 }
 
-func mrbEncode(message [91]int8, g2 [174][91]int8) [174]int8 {
+func mrbEncode(message [91]int8, g2 *[174][91]int8) [174]int8 {
 	var codeword [174]int8
 	for bit, value := range message {
 		if value == 0 {

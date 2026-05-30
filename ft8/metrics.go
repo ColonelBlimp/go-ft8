@@ -46,6 +46,7 @@ func analyzeCandidateWithDownsamplerForMetricSet(dd []float32, ds *downsampler, 
 
 func computeSoftMetrics(cs [8][ft8Symbols]complex128, squared bool) softMetrics {
 	var m softMetrics
+	var s2buf [512]float64
 
 	for nsym := 1; nsym <= 3; nsym++ {
 		nt := 1 << (3 * nsym)
@@ -56,7 +57,6 @@ func computeSoftMetrics(cs [8][ft8Symbols]complex128, squared bool) softMetrics 
 					ks = k + 43
 				}
 
-				var s2buf [512]float64
 				s2 := s2buf[:nt]
 				for i := 0; i < nt; i++ {
 					i1 := i / 64
@@ -197,10 +197,11 @@ func apCQPass(metric [174]float64) [174]float64 {
 }
 
 var ft8APCQBits = [29]int8{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0}
+var ft8NoAPMask [174]int8
 var ft8CQAPMask = initCQAPMask()
 
-func cqAPMask() [174]int8 {
-	return ft8CQAPMask
+func cqAPMask() *[174]int8 {
+	return &ft8CQAPMask
 }
 
 func initCQAPMask() [174]int8 {

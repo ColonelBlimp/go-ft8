@@ -33,6 +33,14 @@ func (p *realFFTPlan) CoefficientsRange(dst []complex128, seq []float64, firstBi
 	return p.coefficientsRange(dst, seq, firstBin, lastBin)
 }
 
+func (p *realFFTPlan) workCoefficients(dst []complex128, seq []float64) []complex128 {
+	return p.coefficientsRange(dst, seq, 0, p.n/2)
+}
+
+func (p *realFFTPlan) workCoefficientsRange(dst []complex128, seq []float64, firstBin, lastBin int) []complex128 {
+	return p.coefficientsRange(dst, seq, firstBin, lastBin)
+}
+
 func (p *realFFTPlan) coefficientsRange(dst []complex128, seq []float64, firstBin, lastBin int) []complex128 {
 	if len(seq) != p.n {
 		panic("real fft: source length mismatch")

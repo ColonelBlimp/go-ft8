@@ -33,7 +33,7 @@ func decodeCandidate(analysis candidateAnalysis) (candidateDecode, bool) {
 }
 
 func decodeCandidateWithMetricSetNoHashes(analysis candidateAnalysis, metricSet int) (candidateDecode, bool) {
-	return decodeCandidateWithMetricSet(analysis, metricSet, nil, normalizeDecoderOptions(DecoderOptions{}))
+	return decodeCandidateWithMetricSet(&analysis, metricSet, nil, normalizeDecoderOptions(DecoderOptions{}))
 }
 
 func unpack77FromCodeword(cw [174]int8) (string, bool) {
@@ -71,13 +71,13 @@ func analysisLLRPasses(analysis candidateAnalysis) [14]decoderPass {
 	for i, llr := range regular {
 		out[i].LLR = llr
 		if i >= 5 {
-			out[i].APMask = cqAPMask()
+			out[i].APMask = *cqAPMask()
 		}
 	}
 	for i, llr := range power {
 		out[i+7].LLR = llr
 		if i >= 5 {
-			out[i+7].APMask = cqAPMask()
+			out[i+7].APMask = *cqAPMask()
 		}
 	}
 	return out

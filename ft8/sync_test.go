@@ -515,9 +515,10 @@ func TestDiagnosticTruthCodewordDistances(t *testing.T) {
 						if msg, ok := decodeCandidateMessage(analysis); ok && msg == want {
 							decoded = true
 						}
-						for _, pass := range analysisLLRPasses(analysis) {
-							d := softDistance(cw, pass.LLR)
-							h := hardErrors(cw, pass.LLR)
+						passes := analysisLLRPasses(analysis)
+						for passIndex := range passes {
+							d := softDistance(cw, &passes[passIndex].LLR)
+							h := hardErrors(cw, &passes[passIndex].LLR)
 							if d < bestD {
 								bestD = d
 								bestHard = h
@@ -627,6 +628,6 @@ func normalizeTruthText(s string) string {
 }
 
 func decode17491BPOnly(llr [174]float64) (ldpcResult, bool) {
-	result, ok, _ := decode17491BP(llr, [174]int8{}, 0)
+	result, ok, _ := decode17491BP(&llr, &ft8NoAPMask, 0)
 	return result, ok
 }
