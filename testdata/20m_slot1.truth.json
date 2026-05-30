@@ -1,0 +1,112 @@
+{
+  "wav": "20m_slot1.wav",
+  "sample_rate": 12000,
+  "source": "jt9-oracle",
+  "signals": [
+    {
+      "text": "PA9R SV9TLU -13",
+      "freq_hz": 2497,
+      "dt_s": -0.1
+    },
+    {
+      "text": "UT7AM PE9JAN -10",
+      "freq_hz": 465,
+      "dt_s": 0.1
+    },
+    {
+      "text": "IZ4EFV OE4RDV -05",
+      "freq_hz": 599,
+      "dt_s": 0.2
+    },
+    {
+      "text": "\u003c...\u003e RG5A KN93",
+      "freq_hz": 381,
+      "dt_s": 0.5
+    },
+    {
+      "text": "CQ DX S56GD JN65",
+      "freq_hz": 1824,
+      "dt_s": 0.2
+    },
+    {
+      "text": "IT9LCJ BI4JJO OM86",
+      "freq_hz": 1363,
+      "dt_s": 0.2
+    },
+    {
+      "text": "\u003c...\u003e EA3NT JN01",
+      "freq_hz": 2619,
+      "dt_s": 0.9
+    },
+    {
+      "text": "CQ A61FJ LL74",
+      "freq_hz": 1550,
+      "dt_s": 0.1
+    },
+    {
+      "text": "N8RAF IK4LZH JN54",
+      "freq_hz": 684,
+      "dt_s": 0.3
+    },
+    {
+      "text": "\u003c...\u003e SV0TPN +01",
+      "freq_hz": 1994,
+      "dt_s": 2.4
+    },
+    {
+      "text": "PA2JFX SV3CNX 73",
+      "freq_hz": 1230,
+      "dt_s": 0.1
+    },
+    {
+      "text": "K7EUG R1BPB -16",
+      "freq_hz": 1096,
+      "dt_s": 0.6
+    },
+    {
+      "text": "PD9FLX RA6OD KN97",
+      "freq_hz": 2867,
+      "dt_s": 0.2
+    },
+    {
+      "text": "CQ UB6OAK KN88",
+      "freq_hz": 2334,
+      "dt_s": 0.5
+    },
+    {
+      "text": "YO3JR DL9PN 73",
+      "freq_hz": 2411,
+      "dt_s": 0.4
+    },
+    {
+      "text": "JA6CNL EW1OW KO33",
+      "freq_hz": 876,
+      "dt_s": 0.1
+    },
+    {
+      "text": "OH5CLQ S55A JN65",
+      "freq_hz": 938,
+      "dt_s": 0.5
+    },
+    {
+      "text": "OH5CLQ DK7ZT -13",
+      "freq_hz": 1714,
+      "dt_s": 0.2
+    },
+    {
+      "text": "OH6IH IU7KEG JN81",
+      "freq_hz": 1868,
+      "dt_s": 0.2
+    },
+    {
+      "text": "CQ A61CK LL75",
+      "freq_hz": 844,
+      "dt_s": 0.2
+    },
+    {
+      "text": "YM4KF G5MJF -24",
+      "freq_hz": 2444,
+      "dt_s": 0.4
+    }
+  ]
+}

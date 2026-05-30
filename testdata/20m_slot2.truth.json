@@ -1,0 +1,167 @@
+{
+  "wav": "20m_slot2.wav",
+  "sample_rate": 12000,
+  "source": "jt9-oracle",
+  "signals": [
+    {
+      "text": "CQ IW3BYL JN56",
+      "freq_hz": 922,
+      "dt_s": 0.1
+    },
+    {
+      "text": "BI4JJO IT9LCJ -13",
+      "freq_hz": 1363,
+      "dt_s": 1.1
+    },
+    {
+      "text": "CQ HG8LXL KN06",
+      "freq_hz": 2670,
+      "dt_s": 0.2
+    },
+    {
+      "text": "G5MJF YM4KF R-11",
+      "freq_hz": 2882,
+      "dt_s": 0.1
+    },
+    {
+      "text": "CQ LA6OCA JO49",
+      "freq_hz": 637,
+      "dt_s": 1.2
+    },
+    {
+      "text": "CQ TC19TC",
+      "freq_hz": 2593,
+      "dt_s": 0.3
+    },
+    {
+      "text": "IK4TVP JA6CNL 73",
+      "freq_hz": 378,
+      "dt_s": 0.3
+    },
+    {
+      "text": "SP0DZ ER3CT R-04",
+      "freq_hz": 1880,
+      "dt_s": 0.1
+    },
+    {
+      "text": "CQ YO3JR KN34",
+      "freq_hz": 2412,
+      "dt_s": 0.2
+    },
+    {
+      "text": "OE4RDV IZ4EFV R-05",
+      "freq_hz": 1977,
+      "dt_s": 0.3
+    },
+    {
+      "text": "CQ ZR6DM KG43",
+      "freq_hz": 1077,
+      "dt_s": 0.1
+    },
+    {
+      "text": "PD1HPB IZ4CMU -01",
+      "freq_hz": 1605,
+      "dt_s": 0.1
+    },
+    {
+      "text": "4S6ARW RA6AR R-17",
+      "freq_hz": 1207,
+      "dt_s": 0.1
+    },
+    {
+      "text": "CQ OE6FEF JN87",
+      "freq_hz": 2340,
+      "dt_s": 0
+    },
+    {
+      "text": "\u003c...\u003e DG2EBG R-21",
+      "freq_hz": 1137,
+      "dt_s": 0.5
+    },
+    {
+      "text": "CQ IZ1HJU JN44                        a1",
+      "freq_hz": 2276,
+      "dt_s": -0
+    },
+    {
+      "text": "SV9TLU PA9R R-21",
+      "freq_hz": 2497,
+      "dt_s": 0.2
+    },
+    {
+      "text": "UR5WCS EA8UP R-05",
+      "freq_hz": 730,
+      "dt_s": 0.2
+    },
+    {
+      "text": "GJ0KYZ YO9EMI KN34",
+      "freq_hz": 557,
+      "dt_s": 0.7
+    },
+    {
+      "text": "PE9JAN UT7AM R-12",
+      "freq_hz": 2151,
+      "dt_s": 0.2
+    },
+    {
+      "text": "PD2AVE UF4S -16",
+      "freq_hz": 1445,
+      "dt_s": 0.2
+    },
+    {
+      "text": "9K2OK EW7DDR KO43",
+      "freq_hz": 256,
+      "dt_s": 0.5
+    },
+    {
+      "text": "\u003c...\u003e DG6JW/T",
+      "freq_hz": 689,
+      "dt_s": 0.3
+    },
+    {
+      "text": "CQ COTA IK7NXU JN81",
+      "freq_hz": 2024,
+      "dt_s": 0.9
+    },
+    {
+      "text": "R8AIJ IW9FRA 73",
+      "freq_hz": 1328,
+      "dt_s": 0.3
+    },
+    {
+      "text": "CQ TA3RAM KN30",
+      "freq_hz": 2326,
+      "dt_s": -0.1
+    },
+    {
+      "text": "CQ UZ5DM KN28                         a1",
+      "freq_hz": 2546,
+      "dt_s": -0.2
+    },
+    {
+      "text": "JY5IB JG0AWE PM96",
+      "freq_hz": 1854,
+      "dt_s": 0.2
+    },
+    {
+      "text": "CQ PD0WH JO22",
+      "freq_hz": 2384,
+      "dt_s": 1.4
+    },
+    {
+      "text": "CQ F1THK JN02                         a1",
+      "freq_hz": 1621,
+      "dt_s": 0.2
+    },
+    {
+      "text": "CQ PD5MVH JO22                        a1",
+      "freq_hz": 2250,
+      "dt_s": 0.2
+    },
+    {
+      "text": "CQ EA4GA IN80",
+      "freq_hz": 283,
+      "dt_s": 0.1
+    }
+  ]
+}

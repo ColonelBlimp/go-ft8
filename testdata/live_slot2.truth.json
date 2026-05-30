@@ -1,0 +1,122 @@
+{
+  "wav": "live_slot2.wav",
+  "sample_rate": 12000,
+  "source": "jt9-oracle",
+  "signals": [
+    {
+      "text": "PE2TV HA7TM KN07",
+      "freq_hz": 2140,
+      "dt_s": 0.4
+    },
+    {
+      "text": "DO4ZH IS0KNG RR73",
+      "freq_hz": 1634,
+      "dt_s": 0.6
+    },
+    {
+      "text": "CQ IQ0RU JN63",
+      "freq_hz": 1697,
+      "dt_s": 0.2
+    },
+    {
+      "text": "IT9VCE DK9FE 73",
+      "freq_hz": 1041,
+      "dt_s": 0.1
+    },
+    {
+      "text": "CQ PD0PMF JO32",
+      "freq_hz": 1803,
+      "dt_s": 0.2
+    },
+    {
+      "text": "DA6NW YM3KCA KN39",
+      "freq_hz": 868,
+      "dt_s": 0.4
+    },
+    {
+      "text": "YL2GJX \u003c...\u003e +06",
+      "freq_hz": 1415,
+      "dt_s": 0.2
+    },
+    {
+      "text": "CQ DN9GLA JO31",
+      "freq_hz": 671,
+      "dt_s": 0.2
+    },
+    {
+      "text": "KP4JFR EA3ACA JN01",
+      "freq_hz": 1900,
+      "dt_s": 0.3
+    },
+    {
+      "text": "F4LNM \u003c...\u003e -12",
+      "freq_hz": 1177,
+      "dt_s": 0.1
+    },
+    {
+      "text": "PP5HR IQ5VK -18",
+      "freq_hz": 2047,
+      "dt_s": 0.2
+    },
+    {
+      "text": "N6FB CT1BOH IM58",
+      "freq_hz": 1342,
+      "dt_s": 0.2
+    },
+    {
+      "text": "PD0LBY OH7NW +08",
+      "freq_hz": 1487,
+      "dt_s": 0.2
+    },
+    {
+      "text": "CQ F5MYK IN97",
+      "freq_hz": 2356,
+      "dt_s": 0.2
+    },
+    {
+      "text": "LU2EI SP8ADU KO11",
+      "freq_hz": 1103,
+      "dt_s": 0.1
+    },
+    {
+      "text": "PA1HGM YL2GJX R-07",
+      "freq_hz": 2522,
+      "dt_s": 0.1
+    },
+    {
+      "text": "DN9BT UR5WAI R-09",
+      "freq_hz": 1577,
+      "dt_s": 1.3
+    },
+    {
+      "text": "SK7WS 9A2KS R-06",
+      "freq_hz": 1122,
+      "dt_s": 0.2
+    },
+    {
+      "text": "CQ BA7LUI OL63",
+      "freq_hz": 2569,
+      "dt_s": 0.6
+    },
+    {
+      "text": "5Z4VJ BG3ISR RR73",
+      "freq_hz": 758,
+      "dt_s": 0.2
+    },
+    {
+      "text": "CQ R7YZ LN04",
+      "freq_hz": 1535,
+      "dt_s": 0.1
+    },
+    {
+      "text": "YL2GJX EA3CSK JN11",
+      "freq_hz": 2525,
+      "dt_s": -0.3
+    },
+    {
+      "text": "R1BDX OE1PEW JN88",
+      "freq_hz": 1760,
+      "dt_s": 0.2
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+go-ft8
+
+Copyright (C) 2026 Marc L. Veary (7Q5MLV)
+
+This repository contains original contributions by Marc L. Veary (7Q5MLV)
+and is distributed under the GNU General Public License, version 3 only
+(`GPL-3.0-only`).
+
+This implementation is a WSJT-X/jt9-derived work. The copyright notice above
+covers only original contributions in this repository. Upstream WSJT-X/jt9
+copyrights and third-party copyrights remain with their respective owners.
+
+Redistribution of this repository or derivative binaries should preserve this
+notice, the GPLv3 license text in `LICENSE`, the derivative-status notice in
+`docs/WSJTX_DERIVATIVE.md`, and applicable third-party notices.
+
+Third-party notices:
+
+- PocketFFT under `internal/pfft/pocketfft/` is vendored under the BSD
+  3-Clause license. See `internal/pfft/pocketfft/LICENSE.md` and
+  `internal/pfft/pocketfft/VENDORED.md`.

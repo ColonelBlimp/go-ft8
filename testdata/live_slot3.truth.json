@@ -1,0 +1,117 @@
+{
+  "wav": "live_slot3.wav",
+  "sample_rate": 12000,
+  "source": "jt9-oracle",
+  "signals": [
+    {
+      "text": "IK6BFH DO4ZH JO64",
+      "freq_hz": 1994,
+      "dt_s": 0.1
+    },
+    {
+      "text": "F1RCQ OM0RX JN88",
+      "freq_hz": 1519,
+      "dt_s": 0.2
+    },
+    {
+      "text": "CQ IT9VCE JM77",
+      "freq_hz": 386,
+      "dt_s": 0.2
+    },
+    {
+      "text": "M9INN OM3DX +02",
+      "freq_hz": 2259,
+      "dt_s": 0.2
+    },
+    {
+      "text": "YL2GJX PA1HGM RR73",
+      "freq_hz": 2459,
+      "dt_s": 0.3
+    },
+    {
+      "text": "PY8ZB RW4M LO44",
+      "freq_hz": 1618,
+      "dt_s": 0.2
+    },
+    {
+      "text": "DO5PY 9A4ZM R+04",
+      "freq_hz": 2342,
+      "dt_s": 0.2
+    },
+    {
+      "text": "\u003c...\u003e UX0KR KO30",
+      "freq_hz": 323,
+      "dt_s": 0.2
+    },
+    {
+      "text": "CQ A61CK LL75",
+      "freq_hz": 814,
+      "dt_s": 0.2
+    },
+    {
+      "text": "EA3ACA KP4JFR -09",
+      "freq_hz": 1824,
+      "dt_s": 0.2
+    },
+    {
+      "text": "UR5WAI DN9BT RR73",
+      "freq_hz": 1576,
+      "dt_s": 0.2
+    },
+    {
+      "text": "ZR1ADI 7N4CPV PM96",
+      "freq_hz": 2110,
+      "dt_s": 0.2
+    },
+    {
+      "text": "BG3ISR 5Z4VJ 73",
+      "freq_hz": 890,
+      "dt_s": 0.2
+    },
+    {
+      "text": "PU8DAS ZR1JT 73",
+      "freq_hz": 1454,
+      "dt_s": 0.9
+    },
+    {
+      "text": "IQ0RU LZ4VR KN13",
+      "freq_hz": 1360,
+      "dt_s": 0.1
+    },
+    {
+      "text": "CQ YD2ADB OI52",
+      "freq_hz": 1880,
+      "dt_s": 0.2
+    },
+    {
+      "text": "OE1PEW DH1PS JO31",
+      "freq_hz": 2118,
+      "dt_s": 0.2
+    },
+    {
+      "text": "\u003c...\u003e HG60IPA RR73",
+      "freq_hz": 2253,
+      "dt_s": 0.1
+    },
+    {
+      "text": "PA0ARR SP5TAO -24",
+      "freq_hz": 2377,
+      "dt_s": 0.4
+    },
+    {
+      "text": "GB9SOS E70SZ JN84",
+      "freq_hz": 854,
+      "dt_s": 0.3
+    },
+    {
+      "text": "SN4K DJ0MEK JO62",
+      "freq_hz": 1385,
+      "dt_s": 0.2
+    },
+    {
+      "text": "\u003c...\u003e US5ZBR KN57",
+      "freq_hz": 404,
+      "dt_s": 0.3
+    }
+  ]
+}
