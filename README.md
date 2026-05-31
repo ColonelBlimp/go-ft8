@@ -75,6 +75,26 @@ for _, msg := range result.Messages {
 }
 ```
 
+For production logging or empty-result investigation, use the report API:
+
+```go
+report := ft8.DecodeMessagesWithReport(pcm, ft8.DecoderOptions{})
+fmt.Println(report.Messages)
+fmt.Printf("%+v\n", report.Diagnostics)
+```
+
+For station-manager style integrations that should reject malformed slots or
+configuration mistakes before decode work starts, use the checked API:
+
+```go
+report, err := ft8.DecodeMessagesChecked(pcm, ft8.DecoderOptions{})
+if err != nil {
+	// Invalid input length or invalid decoder options.
+	panic(err)
+}
+fmt.Println(report.Messages)
+```
+
 Encode supported standard FT8 messages to protocol bits, LDPC codeword, and
 tone sequence:
 

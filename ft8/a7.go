@@ -8,28 +8,43 @@ import (
 	"strings"
 )
 
+// Decoder retains hash and A7 hint state across adjacent FT8 receive slots for
+// one receiver stream.
+//
+// Decoder instances are not safe for concurrent use by multiple goroutines.
 type Decoder struct {
-	seq     int
-	history [2][]a7Hint
-	hashes  hashTable
-	options decodeOptions
+	seq        int
+	history    [2][]a7Hint
+	hashes     hashTable
+	options    decodeOptions
+	rawOptions DecoderOptions
 }
 
-// NewDecoder returns a stateful FT8 decoder for one receiver stream.
-// Decoder instances retain hash/history state and are not safe for concurrent
-// use by multiple goroutines.
+// NewDecoder returns a stateful FT8 decoder for one receiver stream using
+// strict-mode default options.
 func NewDecoder() *Decoder {
 	return NewDecoderWithOptions(DecoderOptions{})
 }
 
 // NewDecoderWithOptions returns a stateful FT8 decoder using the supplied
-// options. The zero-value options preserve strict-mode behavior.
+// options.
+//
+// The zero-value options preserve strict-mode behavior. Options are normalized
+// for permissive decode methods; DecodeMessagesChecked validates the original
+// options supplied here before advancing decoder state.
 func NewDecoderWithOptions(options DecoderOptions) *Decoder {
-	return &Decoder{options: normalizeDecoderOptions(options)}
+	return &Decoder{
+		options:    normalizeDecoderOptions(options),
+		rawOptions: options,
+	}
 }
 
 // DecodeMessages decodes one 15-second FT8 slot from 12 kHz mono signed-16-bit
 // PCM samples, using state retained from prior calls for hash and A7 hints.
+//
+// This is the permissive stateful API. Use DecodeMessagesWithReport for
+// diagnostics or DecodeMessagesChecked when caller input and options should be
+// validated before decoder state advances.
 func (d *Decoder) DecodeMessages(iwave []int16) []DecodedMessage {
 	// FT8 alternates transmit periods, so A7 hints are keyed by parity and come
 	// from the previous slot with the same even/odd cadence.
@@ -38,6 +53,34 @@ func (d *Decoder) DecodeMessages(iwave []int16) []DecodedMessage {
 	d.history[d.seq] = collectA7Hints(out)
 	d.seq ^= 1
 	return out
+}
+
+// DecodeMessagesWithReport decodes one slot using this decoder's retained
+// hash/history state and returns aggregate diagnostics.
+//
+// This method is permissive and advances decoder state just like DecodeMessages.
+// Use DecodeMessagesChecked to reject invalid input or options before state is
+// updated.
+func (d *Decoder) DecodeMessagesWithReport(iwave []int16) DecodeReport {
+	// FT8 alternates transmit periods, so A7 hints are keyed by parity and come
+	// from the previous slot with the same even/odd cadence.
+	hints := d.history[d.seq]
+	report := decodeMessagesReportCore(iwave, hints, &d.hashes, d.options)
+	d.history[d.seq] = collectA7Hints(report.Messages)
+	d.seq ^= 1
+	return report
+}
+
+// DecodeMessagesChecked validates input and decoder options, then decodes one
+// slot using this decoder's retained hash/history state.
+//
+// Invalid input or options return an error and do not advance decoder state. A
+// valid slot with no decoded messages returns an empty report and a nil error.
+func (d *Decoder) DecodeMessagesChecked(iwave []int16) (DecodeReport, error) {
+	if err := validateDecodeRequest(iwave, d.rawOptions); err != nil {
+		return DecodeReport{Diagnostics: newDecodeDiagnostics(iwave)}, err
+	}
+	return d.DecodeMessagesWithReport(iwave), nil
 }
 
 // DecodeStructured decodes one slot using this decoder's configured mode and

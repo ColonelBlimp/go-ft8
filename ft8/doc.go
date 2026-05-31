@@ -6,6 +6,10 @@
 // Production callers should normally create one Decoder per receiver stream and
 // call (*Decoder).DecodeMessages once per 15-second FT8 slot. Decoder instances
 // retain hash/history state and are not safe for concurrent use.
+// DecodeMessagesWithReport and (*Decoder).DecodeMessagesWithReport return the
+// same messages plus aggregate diagnostics for production observability.
+// DecodeMessagesChecked and (*Decoder).DecodeMessagesChecked add strict input
+// and option validation for service integrations.
 //
 // EncodeStandardMessage exposes the protocol encoder for supported standard
 // FT8 messages. The package deliberately does not handle audio device output,

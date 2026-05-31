@@ -9,6 +9,8 @@ import (
 	"strings"
 )
 
+// DecodedMessage describes one recovered FT8 message and the signal/decode
+// metrics associated with the candidate that produced it.
 type DecodedMessage struct {
 	Text           string
 	FreqHz         float64
@@ -23,25 +25,44 @@ type DecodedMessage struct {
 }
 
 // DecodeMessages decodes one 15-second FT8 slot from 12 kHz mono signed-16-bit
-// PCM samples. It is stateless; use Decoder when hash/history state should be
-// retained across adjacent slots.
+// PCM samples.
+//
+// This is the permissive stateless API: short input is zero-padded, excess
+// input beyond the decoder buffer is ignored, and an empty result is a normal
+// no-decode outcome. Use DecodeMessagesWithReport for diagnostics or
+// DecodeMessagesChecked when caller input and options should be validated.
 func DecodeMessages(iwave []int16) []DecodedMessage {
 	return DecodeMessagesWithOptions(iwave, DecoderOptions{})
 }
 
 // DecodeMessagesWithOptions decodes one 15-second FT8 slot with explicit
-// options. The zero-value options preserve strict-mode behavior.
+// options.
+//
+// The zero-value options preserve strict-mode behavior. This API is permissive
+// and normalizes unsupported option values where possible; use
+// DecodeMessagesChecked to reject invalid input or options before decode work
+// starts.
 func DecodeMessagesWithOptions(iwave []int16, options DecoderOptions) []DecodedMessage {
 	var hashes hashTable
 	return decodeMessagesCore(iwave, nil, &hashes, normalizeDecoderOptions(options))
 }
 
 func decodeMessagesCore(iwave []int16, a7Hints []a7Hint, hashes *hashTable, options decodeOptions) []DecodedMessage {
+	return decodeMessagesCoreWithDiagnostics(iwave, a7Hints, hashes, options, nil)
+}
+
+func decodeMessagesCoreWithDiagnostics(iwave []int16, a7Hints []a7Hint, hashes *hashTable, options decodeOptions, diagnostics *DecodeDiagnostics) []DecodedMessage {
 	seen := make(map[string]bool)
 	var out []DecodedMessage
 	var fullDD []float32
+	if diagnostics != nil {
+		diagnostics.A7Hints = len(a7Hints)
+	}
 	for blockIndex := 0; blockIndex < options.blockCount; blockIndex++ {
 		blocks := options.blocks[blockIndex]
+		if diagnostics != nil {
+			diagnostics.BlocksSearched = append(diagnostics.BlocksSearched, blocks)
+		}
 		dd := decodeBlocks(iwave, blocks)
 		keepDD := false
 		if blocks == 50 && len(a7Hints) > 0 {
@@ -52,13 +73,23 @@ func decodeMessagesCore(iwave []int16, a7Hints []a7Hint, hashes *hashTable, opti
 		}
 		for pass := 0; pass < 2; pass++ {
 			candidates := findCandidates(dd, options.minFreqHz, options.maxFreqHz, options.syncMin, 0, options.maxCandidates)
+			if diagnostics != nil {
+				diagnostics.CandidateSearches++
+				diagnostics.CandidatesFound += len(candidates)
+			}
 			ds := getDownsampler()
 			var subtract []DecodedMessage
 			var subtractCodewords [][174]int8
 			for candIndex, cand := range candidates {
-				analysis, decoded, ok := decodeCandidateVariantsForMetricSet(dd, ds, cand, candIndex == 0, pass, hashes, options)
+				if diagnostics != nil {
+					diagnostics.CandidatesAnalyzed++
+				}
+				analysis, decoded, ok := decodeCandidateVariantsForMetricSet(dd, ds, cand, candIndex == 0, pass, hashes, options, diagnostics)
 				if !ok {
 					continue
+				}
+				if diagnostics != nil {
+					diagnostics.DecodedCandidates++
 				}
 				msg := DecodedMessage{
 					Text:           decoded.Text,
@@ -75,6 +106,9 @@ func decodeMessagesCore(iwave []int16, a7Hints []a7Hint, hashes *hashTable, opti
 				subtract = append(subtract, msg)
 				subtractCodewords = append(subtractCodewords, decoded.Result.Codeword)
 				if seen[decoded.Text] {
+					if diagnostics != nil {
+						diagnostics.DuplicateMessages++
+					}
 					continue
 				}
 				seen[decoded.Text] = true
@@ -83,6 +117,9 @@ func decodeMessagesCore(iwave []int16, a7Hints []a7Hint, hashes *hashTable, opti
 			putDownsampler(ds)
 			if len(subtract) == 0 {
 				break
+			}
+			if diagnostics != nil {
+				diagnostics.Subtractions += len(subtract)
 			}
 			for i, msg := range subtract {
 				subtractFT8(dd, tonesFromCodeword(subtractCodewords[i]), msg.FreqHz, msg.DTSec+0.5)
@@ -93,10 +130,17 @@ func decodeMessagesCore(iwave []int16, a7Hints []a7Hint, hashes *hashTable, opti
 		}
 	}
 	if len(a7Hints) > 0 && fullDD != nil {
-		out = append(out, decodeA7Hints(fullDD, a7Hints, seen)...)
+		a7Decoded := decodeA7Hints(fullDD, a7Hints, seen)
+		if diagnostics != nil {
+			diagnostics.A7Decoded = len(a7Decoded)
+		}
+		out = append(out, a7Decoded...)
 	}
 	if fullDD != nil {
 		putDecodeBlocks(fullDD)
+	}
+	if diagnostics != nil {
+		diagnostics.UniqueMessages = len(out)
 	}
 	return out
 }
@@ -106,28 +150,34 @@ type candidateDecode struct {
 	Result ldpcResult
 }
 
-func decodeCandidateVariantsForMetricSet(dd []float32, ds *downsampler, cand candidate, recompute bool, metricSet int, hashes *hashTable, options decodeOptions) (candidateAnalysis, candidateDecode, bool) {
+func decodeCandidateVariantsForMetricSet(dd []float32, ds *downsampler, cand candidate, recompute bool, metricSet int, hashes *hashTable, options decodeOptions, diagnostics *DecodeDiagnostics) (candidateAnalysis, candidateDecode, bool) {
 	analysis := analyzeCandidateWithDownsamplerForMetricSet(dd, ds, cand, recompute, metricSet)
-	if decoded, ok := decodeCandidateWithMetricSet(&analysis, metricSet, hashes, options); ok {
+	if decoded, ok := decodeCandidateWithMetricSet(&analysis, metricSet, hashes, options, diagnostics); ok {
 		return analysis, decoded, true
 	}
 	return analysis, candidateDecode{}, false
 }
 
-func decodeCandidateWithMetricSet(analysis *candidateAnalysis, metricSet int, hashes *hashTable, options decodeOptions) (candidateDecode, bool) {
+func decodeCandidateWithMetricSet(analysis *candidateAnalysis, metricSet int, hashes *hashTable, options decodeOptions, diagnostics *DecodeDiagnostics) (candidateDecode, bool) {
 	if analysis.Refined.HardSync <= options.hardSyncMin {
+		if diagnostics != nil {
+			diagnostics.RejectedHardSync++
+		}
 		return candidateDecode{}, false
 	}
 	if !passesCostasGate(analysis.Refined, options) {
+		if diagnostics != nil {
+			diagnostics.RejectedCostas++
+		}
 		return candidateDecode{}, false
 	}
 	if metricSet != 1 {
-		if decoded, ok := decodeCandidateMetrics(&analysis.Metrics, hashes, options); ok {
+		if decoded, ok := decodeCandidateMetrics(&analysis.Metrics, hashes, options, diagnostics); ok {
 			return decoded, true
 		}
 	}
 	if metricSet != 0 {
-		if decoded, ok := decodeCandidateMetrics(&analysis.PowerMetrics, hashes, options); ok {
+		if decoded, ok := decodeCandidateMetrics(&analysis.PowerMetrics, hashes, options, diagnostics); ok {
 			return decoded, true
 		}
 	}
@@ -147,17 +197,17 @@ func passesCostasGate(refined refinedCandidate, options decodeOptions) bool {
 	return true
 }
 
-func decodeCandidateMetrics(metrics *softMetrics, hashes *hashTable, options decodeOptions) (candidateDecode, bool) {
+func decodeCandidateMetrics(metrics *softMetrics, hashes *hashTable, options decodeOptions, diagnostics *DecodeDiagnostics) (candidateDecode, bool) {
 	for pass := 0; pass < 5; pass++ {
-		if decoded, ok := decodeMetricPass(metricPassSource(metrics, pass), &ft8NoAPMask, hashes, options); ok {
+		if decoded, ok := decodeMetricPass(metricPassSource(metrics, pass), &ft8NoAPMask, hashes, options, diagnostics); ok {
 			return decoded, true
 		}
 	}
 	mask := cqAPMask()
-	if decoded, ok := decodeAPMetricPass(&metrics.Single, mask, hashes, options); ok {
+	if decoded, ok := decodeAPMetricPass(&metrics.Single, mask, hashes, options, diagnostics); ok {
 		return decoded, true
 	}
-	return decodeAPMetricPass(&metrics.Triple, mask, hashes, options)
+	return decodeAPMetricPass(&metrics.Triple, mask, hashes, options, diagnostics)
 }
 
 func metricPassSource(metrics *softMetrics, pass int) *[174]float64 {
@@ -175,19 +225,19 @@ func metricPassSource(metrics *softMetrics, pass int) *[174]float64 {
 	}
 }
 
-func decodeMetricPass(metric *[174]float64, apmask *[174]int8, hashes *hashTable, options decodeOptions) (candidateDecode, bool) {
+func decodeMetricPass(metric *[174]float64, apmask *[174]int8, hashes *hashTable, options decodeOptions, diagnostics *DecodeDiagnostics) (candidateDecode, bool) {
 	var llr [174]float64
 	for i, v := range metric {
 		llr[i] = ft8ScaleFac * v
 	}
 	shapeLLR(&llr, options)
-	return decodeLLRPass(&llr, apmask, hashes, options)
+	return decodeLLRPass(&llr, apmask, hashes, options, diagnostics)
 }
 
-func decodeAPMetricPass(metric *[174]float64, apmask *[174]int8, hashes *hashTable, options decodeOptions) (candidateDecode, bool) {
+func decodeAPMetricPass(metric *[174]float64, apmask *[174]int8, hashes *hashTable, options decodeOptions, diagnostics *DecodeDiagnostics) (candidateDecode, bool) {
 	llr := apCQPass(*metric)
 	shapeLLR(&llr, options)
-	return decodeLLRPass(&llr, apmask, hashes, options)
+	return decodeLLRPass(&llr, apmask, hashes, options, diagnostics)
 }
 
 func shapeLLR(llr *[174]float64, options decodeOptions) {
@@ -231,7 +281,10 @@ func winsorizeLLR(llr *[174]float64, factor float64) {
 	}
 }
 
-func decodeLLRPass(llr *[174]float64, apmask *[174]int8, hashes *hashTable, options decodeOptions) (candidateDecode, bool) {
+func decodeLLRPass(llr *[174]float64, apmask *[174]int8, hashes *hashTable, options decodeOptions, diagnostics *DecodeDiagnostics) (candidateDecode, bool) {
+	if diagnostics != nil {
+		diagnostics.LDPCAttempts++
+	}
 	var result ldpcResult
 	var ok bool
 	if options.enableOSD {
@@ -240,19 +293,34 @@ func decodeLLRPass(llr *[174]float64, apmask *[174]int8, hashes *hashTable, opti
 		result, ok, _ = decode17491BP(llr, apmask, 0)
 	}
 	if !ok {
+		if diagnostics != nil {
+			diagnostics.LDPCFailures++
+		}
 		return candidateDecode{}, false
 	}
 	if result.HardErrors < 0 || result.HardErrors > 36 {
+		if diagnostics != nil {
+			diagnostics.RejectedHardErrors++
+		}
 		return candidateDecode{}, false
 	}
 	if allZeroCodeword(result.Codeword) {
+		if diagnostics != nil {
+			diagnostics.RejectedAllZero++
+		}
 		return candidateDecode{}, false
 	}
 	msg, ok := unpack77FromCodewordWithHashes(result.Codeword, hashes)
 	if !ok {
+		if diagnostics != nil {
+			diagnostics.UnpackFailures++
+		}
 		return candidateDecode{}, false
 	}
 	if strings.Contains(msg, "/R") || strings.HasPrefix(msg, "TU; ") {
+		if diagnostics != nil {
+			diagnostics.RejectedMessageFilter++
+		}
 		return candidateDecode{}, false
 	}
 	return candidateDecode{Text: msg, Result: result}, true

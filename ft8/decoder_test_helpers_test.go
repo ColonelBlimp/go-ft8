@@ -24,7 +24,7 @@ func decodeCandidateVariants(dd []float32, ds *downsampler, cand candidate, reco
 }
 
 func decodeCandidateVariantsForMetricSetNoHashes(dd []float32, ds *downsampler, cand candidate, recompute bool, metricSet int) (candidateAnalysis, candidateDecode, bool) {
-	return decodeCandidateVariantsForMetricSet(dd, ds, cand, recompute, metricSet, nil, normalizeDecoderOptions(DecoderOptions{}))
+	return decodeCandidateVariantsForMetricSet(dd, ds, cand, recompute, metricSet, nil, normalizeDecoderOptions(DecoderOptions{}), nil)
 }
 
 func decodeCandidate(analysis candidateAnalysis) (candidateDecode, bool) {
@@ -32,7 +32,7 @@ func decodeCandidate(analysis candidateAnalysis) (candidateDecode, bool) {
 }
 
 func decodeCandidateWithMetricSetNoHashes(analysis candidateAnalysis, metricSet int) (candidateDecode, bool) {
-	return decodeCandidateWithMetricSet(&analysis, metricSet, nil, normalizeDecoderOptions(DecoderOptions{}))
+	return decodeCandidateWithMetricSet(&analysis, metricSet, nil, normalizeDecoderOptions(DecoderOptions{}), nil)
 }
 
 func unpack77FromCodeword(cw [174]int8) (string, bool) {

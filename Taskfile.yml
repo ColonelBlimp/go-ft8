@@ -15,7 +15,7 @@ tasks:
   test:smoke:
     desc: Run fixture-independent smoke tests.
     cmds:
-      - go test ./... -run 'TestCRC14FastMatchesSlow|TestPackEncodeRoundTripsStandardMessages|TestEncodeStandardMessage|TestDecodeOptions'
+      - go test ./... -run 'TestCRC14FastMatchesSlow|TestPackEncodeRoundTripsStandardMessages|TestEncodeStandardMessage|TestDecodeMessagesWithReportEmptyInputDiagnostics|TestDecodeMessagesCheckedRejectsInvalidInput|TestDecodeOptions'
 
   test:prod:
     desc: Run the full test suite with the production PocketFFT backend.
@@ -25,7 +25,7 @@ tasks:
   test:smoke-prod:
     desc: Run smoke tests with the production PocketFFT backend.
     cmds:
-      - go test -tags pocketfft ./... -run 'TestCRC14FastMatchesSlow|TestPackEncodeRoundTripsStandardMessages|TestEncodeStandardMessage|TestDecodeOptions'
+      - go test -tags pocketfft ./... -run 'TestCRC14FastMatchesSlow|TestPackEncodeRoundTripsStandardMessages|TestEncodeStandardMessage|TestDecodeMessagesWithReportEmptyInputDiagnostics|TestDecodeMessagesCheckedRejectsInvalidInput|TestDecodeOptions'
 
   bench:strict:
     desc: Benchmark strict decoding with the default Gonum backend.

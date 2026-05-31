@@ -230,7 +230,7 @@ func TestHybridDecoderUnpacksFixtureMessages(t *testing.T) {
 				found := false
 				for i := range runs {
 					for _, cand := range candidatesNearFrequency(runs[i].Candidates, float64(sig.FreqHz), 5.0) {
-						_, dec, ok := decodeCandidateVariantsForMetricSet(runs[i].DD, runs[i].DS, cand, decoded == 0, 2, nil, options)
+						_, dec, ok := decodeCandidateVariantsForMetricSet(runs[i].DD, runs[i].DS, cand, decoded == 0, 2, nil, options, nil)
 						if ok {
 							decoded++
 						}
