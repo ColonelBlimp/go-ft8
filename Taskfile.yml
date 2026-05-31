@@ -15,7 +15,7 @@ tasks:
   test:smoke:
     desc: Run fixture-independent smoke tests.
     cmds:
-      - go test ./... -run 'TestCRC14FastMatchesSlow|TestPackEncodeRoundTripsStandardMessages|TestEncodeStandardMessage|TestDecodeMessagesWithReportEmptyInputDiagnostics|TestDecodeMessagesCheckedRejectsInvalidInput|TestDecodeOptions'
+      - go test ./... -run 'TestCRC14FastMatchesSlow|TestPackEncodeRoundTripsStandardMessages|TestEncodeStandardMessage|TestDecodeMessagesWithReportEmptyInputDiagnostics|TestDecodeMessagesCheckedRejectsInvalidInput|TestDecodeStructuredCheckedRejectsInvalidInput|TestDecodeOptions'
 
   test:prod:
     desc: Run the full test suite with the production PocketFFT backend.
@@ -25,7 +25,17 @@ tasks:
   test:smoke-prod:
     desc: Run smoke tests with the production PocketFFT backend.
     cmds:
-      - go test -tags pocketfft ./... -run 'TestCRC14FastMatchesSlow|TestPackEncodeRoundTripsStandardMessages|TestEncodeStandardMessage|TestDecodeMessagesWithReportEmptyInputDiagnostics|TestDecodeMessagesCheckedRejectsInvalidInput|TestDecodeOptions'
+      - go test -tags pocketfft ./... -run 'TestCRC14FastMatchesSlow|TestPackEncodeRoundTripsStandardMessages|TestEncodeStandardMessage|TestDecodeMessagesWithReportEmptyInputDiagnostics|TestDecodeMessagesCheckedRejectsInvalidInput|TestDecodeStructuredCheckedRejectsInvalidInput|TestDecodeOptions'
+
+  test:race:
+    desc: Run race detector smoke tests for the FT8 package.
+    cmds:
+      - go test -race ./ft8 -run 'TestStatelessDecodeConcurrentNoRace|TestDecodeMessagesCheckedRejectsInvalidInput|TestDecodeStructuredCheckedRejectsInvalidInput|FuzzDecodePublicAPIsNoPanic'
+
+  test:race-prod:
+    desc: Run FT8 race detector smoke tests with the production PocketFFT backend.
+    cmds:
+      - go test -race -tags pocketfft ./ft8 -run 'TestStatelessDecodeConcurrentNoRace|TestDecodeMessagesCheckedRejectsInvalidInput|TestDecodeStructuredCheckedRejectsInvalidInput|FuzzDecodePublicAPIsNoPanic'
 
   bench:strict:
     desc: Benchmark strict decoding with the default Gonum backend.

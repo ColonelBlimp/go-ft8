@@ -88,20 +88,39 @@ func (d *Decoder) DecodeMessagesChecked(iwave []int16) (DecodeReport, error) {
 // pass; use the package-level DecodeStructured for strict+deep comparison.
 func (d *Decoder) DecodeStructured(iwave []int16) DecodeResult {
 	messages := d.DecodeMessages(iwave)
-	result := DecodeResult{
-		Strict:   messages,
-		Messages: make([]StructuredMessage, 0, len(messages)),
+	return mergeStructuredDecode(messages, nil, false)
+}
+
+// DecodeStructuredWithReport decodes one slot using this decoder's retained
+// hash/history state and returns mode-labeled results plus aggregate
+// diagnostics.
+//
+// This method is permissive and advances decoder state just like DecodeMessages.
+// Use DecodeStructuredChecked to reject invalid input or options before state is
+// updated.
+func (d *Decoder) DecodeStructuredWithReport(iwave []int16) StructuredDecodeReport {
+	report := d.DecodeMessagesWithReport(iwave)
+	return StructuredDecodeReport{
+		Result:       mergeStructuredDecode(report.Messages, nil, false),
+		StrictReport: report,
 	}
-	for _, msg := range messages {
-		copyMsg := msg
-		result.Messages = append(result.Messages, StructuredMessage{
-			DecodedMessage: msg,
-			Mode:           DecodeModeStrict,
-			Strict:         true,
-			StrictCopy:     &copyMsg,
-		})
+}
+
+// DecodeStructuredChecked validates input and decoder options, then decodes one
+// slot using this decoder's retained hash/history state and returns mode-labeled
+// output with aggregate diagnostics.
+//
+// Invalid input or options return an error and do not advance decoder state. A
+// valid slot with no decoded messages returns an empty report and a nil error.
+func (d *Decoder) DecodeStructuredChecked(iwave []int16) (StructuredDecodeReport, error) {
+	report, err := d.DecodeMessagesChecked(iwave)
+	if err != nil {
+		return StructuredDecodeReport{StrictReport: report}, err
 	}
-	return result
+	return StructuredDecodeReport{
+		Result:       mergeStructuredDecode(report.Messages, nil, false),
+		StrictReport: report,
+	}, nil
 }
 
 type a7Hint struct {

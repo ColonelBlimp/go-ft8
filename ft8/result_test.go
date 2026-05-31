@@ -3,7 +3,10 @@
 
 package ft8
 
-import "testing"
+import (
+	"errors"
+	"testing"
+)
 
 func TestDecodeStructuredStrictOnly(t *testing.T) {
 	samples := loadCorpusWAV(t, "20m_slot2.wav")
@@ -86,5 +89,97 @@ func TestDecodeResultConvenienceFilters(t *testing.T) {
 	}
 	for text := range want {
 		t.Fatalf("missing deep-only text = %q", text)
+	}
+}
+
+func TestDecodeStructuredWithReportDiagnostics(t *testing.T) {
+	samples := loadCorpusWAV(t, "20m_slot2.wav")
+	want := DecodeStructured(samples, StructuredDecodeOptions{IncludeDeep: true})
+	report := DecodeStructuredWithReport(samples, StructuredDecodeOptions{IncludeDeep: true})
+	if len(report.Result.Messages) != len(want.Messages) {
+		t.Fatalf("Messages length got %d, want %d", len(report.Result.Messages), len(want.Messages))
+	}
+	if len(report.StrictReport.Messages) != len(report.Result.Strict) {
+		t.Fatalf("strict report/result mismatch: report=%d result=%d",
+			len(report.StrictReport.Messages), len(report.Result.Strict))
+	}
+	if len(report.DeepReport.Messages) != len(report.Result.Deep) {
+		t.Fatalf("deep report/result mismatch: report=%d result=%d",
+			len(report.DeepReport.Messages), len(report.Result.Deep))
+	}
+	if report.StrictReport.Diagnostics.InputSamples != len(samples) {
+		t.Fatalf("strict InputSamples got %d, want %d",
+			report.StrictReport.Diagnostics.InputSamples, len(samples))
+	}
+	if report.DeepReport.Diagnostics.CandidateSearches == 0 {
+		t.Fatalf("deep CandidateSearches got 0, want nonzero")
+	}
+}
+
+func TestDecodeStructuredCheckedRejectsInvalidInput(t *testing.T) {
+	report, err := DecodeStructuredChecked(nil, StructuredDecodeOptions{IncludeDeep: true})
+	if !errors.Is(err, ErrInvalidDecodeInput) {
+		t.Fatalf("error got %v, want ErrInvalidDecodeInput", err)
+	}
+	if report.StrictReport.Diagnostics.ShortInputSamples != ft8FrameSamples {
+		t.Fatalf("ShortInputSamples got %d, want %d",
+			report.StrictReport.Diagnostics.ShortInputSamples, ft8FrameSamples)
+	}
+	if len(report.Result.Messages) != 0 {
+		t.Fatalf("Messages length got %d, want 0", len(report.Result.Messages))
+	}
+}
+
+func TestDecodeStructuredCheckedRejectsInvalidDeepOptionsBeforeDecode(t *testing.T) {
+	samples := make([]int16, ft8FrameSamples)
+	report, err := DecodeStructuredChecked(samples, StructuredDecodeOptions{
+		IncludeDeep: true,
+		DeepOptions: DecoderOptions{Blocks: []int{50, 50}},
+	})
+	if !errors.Is(err, ErrInvalidDecoderOptions) {
+		t.Fatalf("error got %v, want ErrInvalidDecoderOptions", err)
+	}
+	if report.StrictReport.Diagnostics.CandidateSearches != 0 {
+		t.Fatalf("strict CandidateSearches got %d, want 0", report.StrictReport.Diagnostics.CandidateSearches)
+	}
+	if report.DeepReport.Diagnostics.CandidateSearches != 0 {
+		t.Fatalf("deep CandidateSearches got %d, want 0", report.DeepReport.Diagnostics.CandidateSearches)
+	}
+}
+
+func TestDecodeStructuredCheckedAllowsEmptyDecode(t *testing.T) {
+	samples := make([]int16, ft8FrameSamples)
+	report, err := DecodeStructuredChecked(samples, StructuredDecodeOptions{})
+	if err != nil {
+		t.Fatalf("DecodeStructuredChecked returned error for valid silence: %v", err)
+	}
+	if len(report.Result.Messages) != 0 {
+		t.Fatalf("Messages length got %d, want 0", len(report.Result.Messages))
+	}
+	if report.StrictReport.Diagnostics.InputSamples != len(samples) {
+		t.Fatalf("InputSamples got %d, want %d", report.StrictReport.Diagnostics.InputSamples, len(samples))
+	}
+}
+
+func TestDecoderDecodeStructuredWithReportAdvancesState(t *testing.T) {
+	decoder := NewDecoder()
+	samples := loadCorpusWAV(t, "20m_slot1.wav")
+	report := decoder.DecodeStructuredWithReport(samples)
+	if len(report.Result.Messages) == 0 {
+		t.Fatalf("stateful DecodeStructuredWithReport returned no messages")
+	}
+	if decoder.seq != 1 {
+		t.Fatalf("decoder seq got %d, want 1", decoder.seq)
+	}
+}
+
+func TestDecoderDecodeStructuredCheckedDoesNotAdvanceStateOnError(t *testing.T) {
+	decoder := NewDecoder()
+	_, err := decoder.DecodeStructuredChecked(nil)
+	if !errors.Is(err, ErrInvalidDecodeInput) {
+		t.Fatalf("error got %v, want ErrInvalidDecodeInput", err)
+	}
+	if decoder.seq != 0 {
+		t.Fatalf("decoder seq got %d, want 0", decoder.seq)
 	}
 }

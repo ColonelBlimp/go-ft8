@@ -75,6 +75,20 @@ for _, msg := range result.Messages {
 }
 ```
 
+Structured decode also has report and checked variants for service
+integrations:
+
+```go
+report, err := ft8.DecodeStructuredChecked(pcm, ft8.StructuredDecodeOptions{
+	IncludeDeep: true,
+})
+if err != nil {
+	panic(err)
+}
+fmt.Println(report.Result.Messages)
+fmt.Printf("%+v\n", report.StrictReport.Diagnostics)
+```
+
 For production logging or empty-result investigation, use the report API:
 
 ```go
@@ -151,6 +165,13 @@ Run the fixture-independent smoke tests:
 
 ```sh
 task test:smoke
+```
+
+Run race-detector smoke tests:
+
+```sh
+task test:race
+task test:race-prod
 ```
 
 The full corpus and diagnostic tests depend on the local WAV/truth fixture

@@ -10,6 +10,8 @@
 // same messages plus aggregate diagnostics for production observability.
 // DecodeMessagesChecked and (*Decoder).DecodeMessagesChecked add strict input
 // and option validation for service integrations.
+// DecodeStructuredWithReport and DecodeStructuredChecked provide the same
+// diagnostics and validation for strict/deep labeled structured output.
 //
 // EncodeStandardMessage exposes the protocol encoder for supported standard
 // FT8 messages. The package deliberately does not handle audio device output,
