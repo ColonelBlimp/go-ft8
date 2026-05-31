@@ -16,6 +16,11 @@
 // ErrInvalidDecoderOptions, and errors.As with DecodeInputError or
 // DecoderOptionError for structured validation details.
 //
+// Decode currently supports free text, standard messages, the standard /P
+// variant, and type 4 compound/nonstandard-call messages. DXpedition, Field
+// Day, telemetry, RTTY Roundup, and type 5 EU VHF contest payloads are not yet
+// unpacked.
+//
 // EncodeStandardMessage exposes the protocol encoder for supported standard
 // FT8 messages. The package deliberately does not handle audio device output,
 // transmit scheduling, PTT, or radio control.

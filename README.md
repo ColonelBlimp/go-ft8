@@ -129,6 +129,38 @@ fmt.Println(encoded.Text, encoded.Tones)
 The package stops at FT8 protocol artifacts. Audio output, transmit scheduling,
 PTT, and radio control belong in separate packages.
 
+## Message Format Coverage
+
+`go-ft8` does not yet implement every WSJT-X 77-bit message family. Current
+decode support is aimed at ordinary FT8 QSO traffic and service integration, not
+full contest/DXpedition parity.
+
+Supported decode payloads:
+
+| Type | Status |
+| ---- | ------ |
+| `i3=0,n3=0` | Free text, up to 13 characters |
+| `i3=1` | Standard messages: CQ, calls, grid, reports, RRR, RR73, 73 |
+| `i3=2` | Standard `/P` form used by European VHF-style messages |
+| `i3=4` | Compound/nonstandard calls using 12-bit hash context |
+
+Known decode gaps:
+
+| Type | Missing family |
+| ---- | -------------- |
+| `i3=0,n3=1` | DXpedition / Fox-Hound |
+| `i3=0,n3=3` and `i3=0,n3=4` | ARRL Field Day |
+| `i3=0,n3=5` | Telemetry, 18 hex characters |
+| `i3=3` | ARRL RTTY Roundup |
+| `i3=5` | EU VHF contest with hashed calls, report, serial, and grid6 |
+
+Decoded candidates with unsupported payload formats are rejected during unpack
+and counted in `DecodeDiagnostics.UnpackFailures`. The public decoder also
+currently filters decoded text containing `/R` and text beginning with `TU; `.
+
+The reference message-family table is WSJT-X's 77-bit format description:
+https://github.com/WSJTX/wsjtx/blob/master/lib/77bit/77bit.txt
+
 ## Decoder Modes
 
 - Strict mode is the default and is used by `DecodeMessages`.
