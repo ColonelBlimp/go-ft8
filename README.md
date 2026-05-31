@@ -248,6 +248,12 @@ task version:push-tag
 `task version:tag` validates `version.txt`, runs smoke tests for the default
 and PocketFFT paths, requires a clean working tree, and creates an annotated
 local tag such as `v0.1.0`. Pushing the tag is a separate explicit step.
+`task version:push-tag` loads `.env` and requires `GITHUB_TOKEN` for a
+non-interactive GitHub HTTPS push. The root `.env` file is ignored by git.
+
+```sh
+GITHUB_TOKEN=github_pat_...
+```
 
 The full corpus and diagnostic tests depend on the local WAV/truth fixture
 corpus and its expected testdata layout. Keep decode-scale or synchronization

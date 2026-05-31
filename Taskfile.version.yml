@@ -130,4 +130,21 @@ tasks:
         sh: cat {{.VERSION_FILE}}
     cmds:
       - git rev-parse "v{{.VERSION}}" >/dev/null
-      - git push origin "v{{.VERSION}}"
+      - |
+        if [ -z "${GITHUB_TOKEN:-}" ]; then
+          echo "GITHUB_TOKEN is not set. Add it to .env or export it before running this task."
+          exit 1
+        fi
+      - |
+        askpass="$(mktemp)"
+        trap 'rm -f "$askpass"' EXIT
+        cat > "$askpass" <<'EOF'
+        #!/bin/sh
+        case "$1" in
+        *Username*) echo "x-access-token" ;;
+        *Password*) echo "${GITHUB_TOKEN}" ;;
+        *) echo "" ;;
+        esac
+        EOF
+        chmod 700 "$askpass"
+        GIT_TERMINAL_PROMPT=0 GIT_ASKPASS="$askpass" git push origin "v{{.VERSION}}"
