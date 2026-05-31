@@ -1,11 +1,13 @@
 # go-ft8
 
-`go-ft8` is a Go implementation of an FT8 decoder. It decodes one
-15-second FT8 slot from 12 kHz mono-signed 16-bit PCM audio and exposes both a
-strict decoder path and optional deeper experimental search modes.
+`go-ft8` is a Go implementation of an FT8 codec. It decodes one 15-second FT8
+slot from 12 kHz mono-signed 16-bit PCM audio, encodes supported standard FT8
+messages to protocol symbols, and exposes both a strict decoder path and
+optional deeper experimental search modes.
 
-This repository is intended for decoder experimentation, parity work, profiling,
-and integration into larger Go applications that need FT8 message recovery.
+This repository is intended for FT8 protocol experimentation, parity work,
+profiling, and integration into larger Go applications that need FT8 message
+recovery or standard-message encoding.
 
 ## Status
 
@@ -23,7 +25,7 @@ comparison against an installed `jt9 -8` decoder.
 go get github.com/ColonelBlimp/go-ft8
 ```
 
-Import the decoder package:
+Import the codec package:
 
 ```go
 import "github.com/ColonelBlimp/go-ft8/ft8"
@@ -72,6 +74,21 @@ for _, msg := range result.Messages {
 	fmt.Println(msg.Mode, msg.Text)
 }
 ```
+
+Encode supported standard FT8 messages to protocol bits, LDPC codeword, and
+tone sequence:
+
+```go
+encoded, err := ft8.EncodeStandardMessage("CQ K1ABC FN42")
+if err != nil {
+	// The first encoder surface intentionally accepts standard messages only.
+	panic(err)
+}
+fmt.Println(encoded.Text, encoded.Tones)
+```
+
+The package stops at FT8 protocol artifacts. Audio output, transmit scheduling,
+PTT, and radio control belong in separate packages.
 
 ## Decoder Modes
 

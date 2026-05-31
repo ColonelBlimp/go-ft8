@@ -1,11 +1,15 @@
 // SPDX-FileCopyrightText: 2026 go-ft8 authors
 // SPDX-License-Identifier: GPL-3.0-only
 
-// Package ft8 decodes FT8 messages from 12 kHz mono signed-16-bit PCM audio.
+// Package ft8 encodes and decodes FT8 messages.
 //
 // Production callers should normally create one Decoder per receiver stream and
 // call (*Decoder).DecodeMessages once per 15-second FT8 slot. Decoder instances
 // retain hash/history state and are not safe for concurrent use.
+//
+// EncodeStandardMessage exposes the protocol encoder for supported standard
+// FT8 messages. The package deliberately does not handle audio device output,
+// transmit scheduling, PTT, or radio control.
 //
 // The decode pipeline deliberately keeps scale handling localized:
 // candidate detection is ratio-based, symbol metrics are normalized before BP,
