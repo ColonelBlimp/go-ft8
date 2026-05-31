@@ -1,0 +1,133 @@
+# yaml-language-server: $schema=https://taskfile.dev/schema.json
+version: '3'
+
+vars:
+  VERSION_FILE: version.txt
+  VERSION_RE: '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z]+([.-][0-9A-Za-z]+)*)?$'
+  PLAIN_VERSION_RE: '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'
+
+tasks:
+  default:
+    desc: List version tasks.
+    cmds:
+      - task --list | grep 'version:'
+
+  get:
+    desc: Print the current package version.
+    cmds:
+      - cat {{.VERSION_FILE}}
+    silent: true
+
+  check:
+    desc: Validate version.txt contains a Go module SemVer version without a leading v.
+    vars:
+      VERSION:
+        sh: cat {{.VERSION_FILE}}
+    cmds:
+      - |
+        if ! printf '%s\n' "{{.VERSION}}" | grep -Eq '{{.VERSION_RE}}'; then
+          echo "Invalid version in {{.VERSION_FILE}}: {{.VERSION}}"
+          echo "Use Go module SemVer without a leading v, for example 0.1.0 or 0.2.0-alpha.1"
+          exit 1
+        fi
+    silent: true
+
+  set:
+    desc: "Set the package version (usage: task version:set -- 0.1.0)."
+    cmds:
+      - |
+        version="{{.CLI_ARGS}}"
+        if [ -z "$version" ]; then
+          echo "Usage: task version:set -- 0.1.0"
+          exit 1
+        fi
+        if ! printf '%s\n' "$version" | grep -Eq '{{.VERSION_RE}}'; then
+          echo "Invalid version: $version"
+          echo "Use Go module SemVer without a leading v, for example 0.1.0 or 0.2.0-alpha.1"
+          exit 1
+        fi
+        printf '%s\n' "$version" > {{.VERSION_FILE}}
+      - echo "Version set to {{.CLI_ARGS}}"
+    silent: true
+
+  bump:patch:
+    desc: Increment the patch version in version.txt.
+    cmds:
+      - |
+        version="$(cat {{.VERSION_FILE}})"
+        if ! printf '%s\n' "$version" | grep -Eq '{{.PLAIN_VERSION_RE}}'; then
+          echo "Patch bump requires plain MAJOR.MINOR.PATCH version, got: $version"
+          exit 1
+        fi
+        major="$(printf '%s\n' "$version" | cut -d. -f1)"
+        minor="$(printf '%s\n' "$version" | cut -d. -f2)"
+        patch="$(printf '%s\n' "$version" | cut -d. -f3)"
+        next="$major.$minor.$((patch + 1))"
+        printf '%s\n' "$next" > {{.VERSION_FILE}}
+        echo "Version bumped: $version -> $next"
+    silent: true
+
+  bump:minor:
+    desc: Increment the minor version in version.txt and reset patch to zero.
+    cmds:
+      - |
+        version="$(cat {{.VERSION_FILE}})"
+        if ! printf '%s\n' "$version" | grep -Eq '{{.PLAIN_VERSION_RE}}'; then
+          echo "Minor bump requires plain MAJOR.MINOR.PATCH version, got: $version"
+          exit 1
+        fi
+        major="$(printf '%s\n' "$version" | cut -d. -f1)"
+        minor="$(printf '%s\n' "$version" | cut -d. -f2)"
+        next="$major.$((minor + 1)).0"
+        printf '%s\n' "$next" > {{.VERSION_FILE}}
+        echo "Version bumped: $version -> $next"
+    silent: true
+
+  bump:major:
+    desc: Increment the major version in version.txt and reset minor/patch to zero.
+    cmds:
+      - |
+        version="$(cat {{.VERSION_FILE}})"
+        if ! printf '%s\n' "$version" | grep -Eq '{{.PLAIN_VERSION_RE}}'; then
+          echo "Major bump requires plain MAJOR.MINOR.PATCH version, got: $version"
+          exit 1
+        fi
+        major="$(printf '%s\n' "$version" | cut -d. -f1)"
+        next="$((major + 1)).0.0"
+        printf '%s\n' "$next" > {{.VERSION_FILE}}
+        echo "Version bumped: $version -> $next"
+    silent: true
+
+  tag:
+    desc: Create an annotated local git tag for version.txt.
+    deps:
+      - check
+    vars:
+      VERSION:
+        sh: cat {{.VERSION_FILE}}
+    cmds:
+      - task test:smoke
+      - task test:smoke-prod
+      - |
+        if [ -n "$(git status --porcelain)" ]; then
+          echo "Working tree must be clean before tagging v{{.VERSION}}"
+          exit 1
+        fi
+      - |
+        if git rev-parse "v{{.VERSION}}" >/dev/null 2>&1; then
+          echo "Tag already exists: v{{.VERSION}}"
+          exit 1
+        fi
+      - git tag -a "v{{.VERSION}}" -m "v{{.VERSION}}"
+      - echo "Created tag v{{.VERSION}}"
+
+  push-tag:
+    desc: Push the current version tag to origin.
+    deps:
+      - check
+    vars:
+      VERSION:
+        sh: cat {{.VERSION_FILE}}
+    cmds:
+      - git rev-parse "v{{.VERSION}}" >/dev/null
+      - git push origin "v{{.VERSION}}"

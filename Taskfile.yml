@@ -1,6 +1,9 @@
 # yaml-language-server: $schema=https://taskfile.dev/schema.json
 version: '3'
 
+includes:
+  version: ./Taskfile.version.yml
+
 tasks:
   default:
     desc: List available tasks.

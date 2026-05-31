@@ -179,6 +179,21 @@ task test:race
 task test:race-prod
 ```
 
+The package version is tracked in `version.txt` as Go module SemVer without a
+leading `v`. Common version tasks:
+
+```sh
+task version:get
+task version:set -- 0.1.0
+task version:bump:patch
+task version:tag
+task version:push-tag
+```
+
+`task version:tag` validates `version.txt`, runs smoke tests for the default
+and PocketFFT paths, requires a clean working tree, and creates an annotated
+local tag such as `v0.1.0`. Pushing the tag is a separate explicit step.
+
 The full corpus and diagnostic tests depend on the local WAV/truth fixture
 corpus and its expected testdata layout. Keep decode-scale or synchronization
 changes behind parity checks, because small numeric changes can affect
