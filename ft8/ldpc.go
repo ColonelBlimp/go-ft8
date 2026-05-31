@@ -21,7 +21,10 @@ func decode17491BP(llr *[174]float64, apmask *[174]int8, saveCount int) (ldpcRes
 	var tanhTOC [83][7]float32
 	var zn [174]float32
 	var zsum [174]float32
-	saved := make([][174]float64, 0, saveCount)
+	var saved [][174]float64
+	if saveCount > 0 {
+		saved = make([][174]float64, 0, saveCount)
+	}
 	for bit := 0; bit < 174; bit++ {
 		llr32[bit] = float32(llr[bit])
 	}

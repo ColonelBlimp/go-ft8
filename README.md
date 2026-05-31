@@ -183,6 +183,28 @@ PocketFFT is vendored under `internal/pfft/pocketfft/` and keeps its upstream
 BSD 3-Clause license notices. The pure-Go Gonum backend remains the fallback for
 builds where CGO or vendored C is not acceptable.
 
+## Benchmarks
+
+Reference decode wall-clock benchmarks on an Intel Core i3-10100F, Linux
+amd64, Go 1.26.3, using the production PocketFFT backend and the six bundled
+WAV fixtures:
+
+```sh
+GOCACHE=/tmp/go-build go test -tags pocketfft ./ft8 -run=^$ \
+  -bench='BenchmarkDecode(Messages|Structured).*PerFixture' \
+  -benchmem -benchtime=1x -count=3
+```
+
+| Benchmark | Mean per 15s slot | Observed fixture range |
+| --------- | ----------------- | ---------------------- |
+| Strict `DecodeMessages` | 0.607 s | 0.568-0.677 s |
+| Deep `DecodeMessagesWithOptions(DeepDecoderOptions())` | 3.84 s | 3.21-4.43 s |
+| Structured strict+deep `DecodeStructured(...IncludeDeep)` | 4.43 s | 3.78-5.07 s |
+
+These numbers are local reference measurements, not performance guarantees.
+Wall time varies with CPU, CGO toolchain, OS scheduling, fixture content, and
+decode options.
+
 ## Development
 
 This repository uses [Task](https://taskfile.dev/) for common development
@@ -196,6 +218,7 @@ Run production decode benchmarks with:
 
 ```sh
 task bench:prod
+task bench:structured-deep-prod
 ```
 
 Run the fixture-independent smoke tests:

@@ -34,12 +34,7 @@ func analyzeCandidateWithDownsamplerForMetricSet(dd []float32, ds *downsampler, 
 		candidate: cand,
 		Refined:   refined,
 	}
-	if metricSet != 1 {
-		analysis.Metrics = computeSoftMetrics(&ds.cs, false)
-	}
-	if metricSet != 0 {
-		analysis.PowerMetrics = computeSoftMetrics(&ds.cs, true)
-	}
+	computeCandidateAnalysisMetrics(&analysis, ds, metricSet)
 	return analysis
 }
 

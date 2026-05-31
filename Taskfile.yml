@@ -60,6 +60,11 @@ tasks:
     cmds:
       - go test -tags pocketfft ./ft8 -run=^$ -bench='BenchmarkDecodeMessagesDeepPerFixture$' -benchmem -benchtime=1x -count=1
 
+  bench:structured-deep-prod:
+    desc: Benchmark structured strict+deep decoding with the production PocketFFT backend.
+    cmds:
+      - go test -tags pocketfft ./ft8 -run=^$ -bench='BenchmarkDecodeStructuredDeepPerFixture$' -benchmem -benchtime=1x -count=1
+
   bench:prod:
     desc: Run production PocketFFT strict and deep decode benchmarks.
     deps:

@@ -151,7 +151,23 @@ type candidateDecode struct {
 }
 
 func decodeCandidateVariantsForMetricSet(dd []float32, ds *downsampler, cand candidate, recompute bool, metricSet int, hashes *hashTable, options decodeOptions, diagnostics *DecodeDiagnostics) (candidateAnalysis, candidateDecode, bool) {
-	analysis := analyzeCandidateWithDownsamplerForMetricSet(dd, ds, cand, recompute, metricSet)
+	analysis := candidateAnalysis{
+		candidate: cand,
+		Refined:   refineCandidateDetails(dd, ds, cand, recompute),
+	}
+	if analysis.Refined.HardSync <= options.hardSyncMin {
+		if diagnostics != nil {
+			diagnostics.RejectedHardSync++
+		}
+		return analysis, candidateDecode{}, false
+	}
+	if !passesCostasGate(analysis.Refined, options) {
+		if diagnostics != nil {
+			diagnostics.RejectedCostas++
+		}
+		return analysis, candidateDecode{}, false
+	}
+	computeCandidateAnalysisMetrics(&analysis, ds, metricSet)
 	if decoded, ok := decodeCandidateWithMetricSet(&analysis, metricSet, hashes, options, diagnostics); ok {
 		return analysis, decoded, true
 	}
@@ -159,18 +175,6 @@ func decodeCandidateVariantsForMetricSet(dd []float32, ds *downsampler, cand can
 }
 
 func decodeCandidateWithMetricSet(analysis *candidateAnalysis, metricSet int, hashes *hashTable, options decodeOptions, diagnostics *DecodeDiagnostics) (candidateDecode, bool) {
-	if analysis.Refined.HardSync <= options.hardSyncMin {
-		if diagnostics != nil {
-			diagnostics.RejectedHardSync++
-		}
-		return candidateDecode{}, false
-	}
-	if !passesCostasGate(analysis.Refined, options) {
-		if diagnostics != nil {
-			diagnostics.RejectedCostas++
-		}
-		return candidateDecode{}, false
-	}
 	if metricSet != 1 {
 		if decoded, ok := decodeCandidateMetrics(&analysis.Metrics, hashes, options, diagnostics); ok {
 			return decoded, true
@@ -182,6 +186,15 @@ func decodeCandidateWithMetricSet(analysis *candidateAnalysis, metricSet int, ha
 		}
 	}
 	return candidateDecode{}, false
+}
+
+func computeCandidateAnalysisMetrics(analysis *candidateAnalysis, ds *downsampler, metricSet int) {
+	if metricSet != 1 {
+		analysis.Metrics = computeSoftMetrics(&ds.cs, false)
+	}
+	if metricSet != 0 {
+		analysis.PowerMetrics = computeSoftMetrics(&ds.cs, true)
+	}
 }
 
 func passesCostasGate(refined refinedCandidate, options decodeOptions) bool {
