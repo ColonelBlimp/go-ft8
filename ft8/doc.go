@@ -12,6 +12,9 @@
 // and option validation for service integrations.
 // DecodeStructuredWithReport and DecodeStructuredChecked provide the same
 // diagnostics and validation for strict/deep labeled structured output.
+// Checked decode errors support errors.Is with ErrInvalidDecodeInput and
+// ErrInvalidDecoderOptions, and errors.As with DecodeInputError or
+// DecoderOptionError for structured validation details.
 //
 // EncodeStandardMessage exposes the protocol encoder for supported standard
 // FT8 messages. The package deliberately does not handle audio device output,

@@ -17,8 +17,17 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      - name: Test
-        run: go test ./...
+      - name: Set up Task
+        uses: go-task/setup-task@v2
 
-      - name: Test PocketFFT smoke path
-        run: go test -tags pocketfft ./... -run 'TestCRC14FastMatchesSlow|TestPackEncodeRoundTripsStandardMessages|TestDeepDecoderOptionsEnableOSD|TestRealFFTPlanRangeContract'
+      - name: Test
+        run: task test
+
+      - name: Test production smoke path
+        run: task test:smoke-prod
+
+      - name: Test race smoke path
+        run: task test:race
+
+      - name: Test production race smoke path
+        run: task test:race-prod

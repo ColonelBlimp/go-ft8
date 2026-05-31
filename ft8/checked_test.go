@@ -14,6 +14,14 @@ func TestDecodeMessagesCheckedRejectsInvalidInput(t *testing.T) {
 	if !errors.Is(err, ErrInvalidDecodeInput) {
 		t.Fatalf("error got %v, want ErrInvalidDecodeInput", err)
 	}
+	var inputErr *DecodeInputError
+	if !errors.As(err, &inputErr) {
+		t.Fatalf("error got %T, want *DecodeInputError", err)
+	}
+	if inputErr.GotSamples != 0 || inputErr.WantSamples != ft8FrameSamples {
+		t.Fatalf("input error got got=%d want=%d, want got=0 want=%d",
+			inputErr.GotSamples, inputErr.WantSamples, ft8FrameSamples)
+	}
 	if report.Diagnostics.InputSamples != 0 {
 		t.Fatalf("InputSamples got %d, want 0", report.Diagnostics.InputSamples)
 	}
@@ -48,6 +56,42 @@ func TestDecodeMessagesCheckedRejectsInvalidOptions(t *testing.T) {
 				t.Fatalf("error got %v, want ErrInvalidDecoderOptions", err)
 			}
 		})
+	}
+}
+
+func TestDecodeMessagesCheckedReturnsTypedOptionError(t *testing.T) {
+	samples := make([]int16, ft8FrameSamples)
+	_, err := DecodeMessagesChecked(samples, DecoderOptions{MaxCandidates: -1})
+	if !errors.Is(err, ErrInvalidDecoderOptions) {
+		t.Fatalf("error got %v, want ErrInvalidDecoderOptions", err)
+	}
+	var optionErr *DecoderOptionError
+	if !errors.As(err, &optionErr) {
+		t.Fatalf("error got %T, want *DecoderOptionError", err)
+	}
+	if optionErr.Field != "MaxCandidates" {
+		t.Fatalf("option field got %q, want MaxCandidates", optionErr.Field)
+	}
+	if optionErr.Reason == "" {
+		t.Fatal("option reason is empty")
+	}
+}
+
+func TestDecodeMessagesCheckedReturnsTypedBlockOptionError(t *testing.T) {
+	samples := make([]int16, ft8FrameSamples)
+	_, err := DecodeMessagesChecked(samples, DecoderOptions{Blocks: []int{50, 50}})
+	if !errors.Is(err, ErrInvalidDecoderOptions) {
+		t.Fatalf("error got %v, want ErrInvalidDecoderOptions", err)
+	}
+	var optionErr *DecoderOptionError
+	if !errors.As(err, &optionErr) {
+		t.Fatalf("error got %T, want *DecoderOptionError", err)
+	}
+	if optionErr.Field != "Blocks[1]" {
+		t.Fatalf("option field got %q, want Blocks[1]", optionErr.Field)
+	}
+	if optionErr.Reason == "" {
+		t.Fatal("option reason is empty")
 	}
 }
 

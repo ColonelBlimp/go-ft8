@@ -109,6 +109,11 @@ if err != nil {
 fmt.Println(report.Messages)
 ```
 
+Checked decode errors support `errors.Is` with `ErrInvalidDecodeInput` and
+`ErrInvalidDecoderOptions`, plus `errors.As` with `*ft8.DecodeInputError` or
+`*ft8.DecoderOptionError` for structured details such as sample counts or the
+invalid option field.
+
 Encode supported standard FT8 messages to protocol bits, LDPC codeword, and
 tone sequence:
 
