@@ -52,8 +52,8 @@ func decode17491BP(llr *[174]float64, apmask *[174]int8, saveCount int) (ldpcRes
 			saved = append(saved, zs)
 		}
 
-		cw, unsatisfied := hardDecisionAndParity(zn)
-		if unsatisfied == 0 && crc14OK(cw) {
+		cw, unsatisfied := hardDecisionAndParity(&zn)
+		if unsatisfied == 0 && crc14OK(&cw) {
 			result.Codeword = cw
 			copy(result.Message91[:], cw[:91])
 			result.HardErrors = hardErrors(cw, llr)
@@ -88,7 +88,7 @@ func decode17491BP(llr *[174]float64, apmask *[174]int8, saveCount int) (ldpcRes
 		}
 
 		for check := 0; check < 83; check++ {
-			for edge := 0; edge < 7; edge++ {
+			for edge := 0; edge < ldpcNrw[check]; edge++ {
 				tanhTOC[check][edge] = float32(math.Tanh(float64(-toc[check][edge] / 2)))
 			}
 		}
@@ -110,7 +110,7 @@ func decode17491BP(llr *[174]float64, apmask *[174]int8, saveCount int) (ldpcRes
 	return ldpcResult{}, false, saved
 }
 
-func hardDecisionAndParity(zn [174]float32) ([174]int8, int) {
+func hardDecisionAndParity(zn *[174]float32) ([174]int8, int) {
 	var cw [174]int8
 	var syndrome [83]uint8
 	for bit, v := range zn {
@@ -129,7 +129,7 @@ func hardDecisionAndParity(zn [174]float32) ([174]int8, int) {
 	return cw, unsatisfied
 }
 
-func crc14OK(cw [174]int8) bool {
+func crc14OK(cw *[174]int8) bool {
 	var state uint16
 	for i := 0; i < 15; i++ {
 		state = (state << 1) | uint16(cw[i]&1)

@@ -22,7 +22,7 @@ func TestPackEncodeRoundTripsStandardMessages(t *testing.T) {
 				t.Fatalf("pack failed")
 			}
 			cw := encode17491(bits)
-			if !crc14OK(cw) {
+			if !crc14OK(&cw) {
 				t.Fatalf("encoded codeword failed CRC")
 			}
 			got, ok := unpack77FromCodeword(cw)

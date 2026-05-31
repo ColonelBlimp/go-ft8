@@ -30,7 +30,7 @@ func TestCRC14FastMatchesSlow(t *testing.T) {
 		var cw [174]int8
 		copy(cw[:77], bits[:77])
 		copy(cw[77:91], bits[82:96])
-		if got, want := crc14OK(cw), crc14RemainderSlow(bits[:]) == 0; got != want {
+		if got, want := crc14OK(&cw), crc14RemainderSlow(bits[:]) == 0; got != want {
 			t.Fatalf("crc14OK mismatch: got %v want %v", got, want)
 		}
 	}
@@ -55,7 +55,7 @@ func BenchmarkCRC14OK(b *testing.B) {
 	cw := encode17491(msg)
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
-		_ = crc14OK(cw)
+		_ = crc14OK(&cw)
 	}
 }
 

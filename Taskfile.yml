@@ -1,0 +1,54 @@
+# yaml-language-server: $schema=https://taskfile.dev/schema.json
+version: '3'
+
+tasks:
+  default:
+    desc: List available tasks.
+    cmds:
+      - task --list
+
+  test:
+    desc: Run the full default Go test suite.
+    cmds:
+      - go test ./...
+
+  test:smoke:
+    desc: Run fixture-independent smoke tests.
+    cmds:
+      - go test ./... -run 'TestCRC14FastMatchesSlow|TestPackEncodeRoundTripsStandardMessages|TestDecodeOptions'
+
+  test:prod:
+    desc: Run the full test suite with the production PocketFFT backend.
+    cmds:
+      - go test -tags pocketfft ./...
+
+  test:smoke-prod:
+    desc: Run smoke tests with the production PocketFFT backend.
+    cmds:
+      - go test -tags pocketfft ./... -run 'TestCRC14FastMatchesSlow|TestPackEncodeRoundTripsStandardMessages|TestDecodeOptions'
+
+  bench:strict:
+    desc: Benchmark strict decoding with the default Gonum backend.
+    cmds:
+      - go test ./ft8 -run=^$ -bench='BenchmarkDecodeMessagesPerFixture$' -benchmem -benchtime=1x -count=1
+
+  bench:strict-prod:
+    desc: Benchmark strict decoding with the production PocketFFT backend.
+    cmds:
+      - go test -tags pocketfft ./ft8 -run=^$ -bench='BenchmarkDecodeMessagesPerFixture$' -benchmem -benchtime=1x -count=1
+
+  bench:deep:
+    desc: Benchmark deep decoding with the default Gonum backend.
+    cmds:
+      - go test ./ft8 -run=^$ -bench='BenchmarkDecodeMessagesDeepPerFixture$' -benchmem -benchtime=1x -count=1
+
+  bench:deep-prod:
+    desc: Benchmark deep decoding with the production PocketFFT backend.
+    cmds:
+      - go test -tags pocketfft ./ft8 -run=^$ -bench='BenchmarkDecodeMessagesDeepPerFixture$' -benchmem -benchtime=1x -count=1
+
+  bench:prod:
+    desc: Run production PocketFFT strict and deep decode benchmarks.
+    deps:
+      - bench:strict-prod
+      - bench:deep-prod

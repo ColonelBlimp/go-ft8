@@ -8,8 +8,7 @@ func findDefaultCandidates(dd []float32, minFreqHz, maxFreqHz int) []candidate {
 }
 
 func refineCandidateWithDownsampler(dd []float32, ds *downsampler, cand candidate, recompute bool) refinedCandidate {
-	refined, _, _ := refineCandidateDetails(dd, ds, cand, recompute)
-	return refined
+	return refineCandidateDetails(dd, ds, cand, recompute)
 }
 
 func decodeCandidateMessage(analysis candidateAnalysis) (string, bool) {

@@ -26,6 +26,8 @@ type downsampler struct {
 	c1          []complex128
 	shifted     []complex128
 	td          []complex128
+	cs          [8][ft8Symbols]complex128
+	symbolPower [8][ft8Symbols]float64
 	taper       [101]float64
 	initialized bool
 }
@@ -130,7 +132,7 @@ func cshift(in []complex128, shift int) []complex128 {
 	return out
 }
 
-func refineCandidateDetails(dd []float32, ds *downsampler, cand candidate, recompute bool) (refinedCandidate, []complex128, int) {
+func refineCandidateDetails(dd []float32, ds *downsampler, cand candidate, recompute bool) refinedCandidate {
 	f1 := cand.FreqHz
 	cd0 := ds.downsample(dd, recompute, f1)
 	i0 := nint((cand.DTSec + 0.5) * float64(ft8DownsampleRate))
@@ -155,8 +157,10 @@ func refineCandidateDetails(dd []float32, ds *downsampler, cand candidate, recom
 			bestDelta = delta
 		}
 	}
-	f1 += bestDelta
-	cd0 = ds.downsample(dd, false, f1)
+	if bestDelta != 0 {
+		f1 += bestDelta
+		cd0 = ds.downsample(dd, false, f1)
+	}
 
 	var finalSyncs [9]float64
 	for idt := -4; idt <= 4; idt++ {
@@ -172,8 +176,8 @@ func refineCandidateDetails(dd []float32, ds *downsampler, cand candidate, recom
 	}
 	bestIndex += bestOffset - 4
 
-	_, symbolPower := ds.symbolSpectra(cd0, bestIndex)
-	evidence := costasEvidence(symbolPower)
+	ds.symbolSpectra(cd0, bestIndex)
+	evidence := costasEvidence(&ds.symbolPower)
 	refined := refinedCandidate{
 		FreqHz:         f1,
 		DTSec:          float64(bestIndex-1) / float64(ft8DownsampleRate),
@@ -183,7 +187,7 @@ func refineCandidateDetails(dd []float32, ds *downsampler, cand candidate, recom
 		CostasGeo:      evidence.Geo,
 		CostasMinBlock: evidence.MinBlock,
 	}
-	return refined, cd0, bestIndex
+	return refined
 }
 
 func toneTweak(deltaHz float64) [32]complex128 {
@@ -254,9 +258,9 @@ func complexPower(z complex128) float64 {
 	return real(z)*real(z) + imag(z)*imag(z)
 }
 
-func (d *downsampler) symbolSpectra(cd0 []complex128, start int) ([8][ft8Symbols]complex128, [8][ft8Symbols]float64) {
-	var cs [8][ft8Symbols]complex128
-	var s8 [8][ft8Symbols]float64
+func (d *downsampler) symbolSpectra(cd0 []complex128, start int) {
+	d.cs = [8][ft8Symbols]complex128{}
+	d.symbolPower = [8][ft8Symbols]float64{}
 	for sym := 0; sym < ft8Symbols; sym++ {
 		i1 := start + sym*32
 		if i1 >= 0 && i1+31 <= ft8RefineSamples-1 && i1+31 < len(cd0) {
@@ -266,14 +270,13 @@ func (d *downsampler) symbolSpectra(cd0 []complex128, start int) ([8][ft8Symbols
 				for i := 0; i < 32; i++ {
 					z += cd0[i1+i] * wave[i]
 				}
-				cs[tone][sym] = z / 1000
+				d.cs[tone][sym] = z / 1000
 				if ft8CostasSymbolMask[sym] {
-					s8[tone][sym] = cmplxAbs(z)
+					d.symbolPower[tone][sym] = cmplxAbs(z)
 				}
 			}
 		}
 	}
-	return cs, s8
 }
 
 var ft8CostasSymbolMask = makeCostasSymbolMask()
@@ -308,7 +311,7 @@ type costasEvidenceResult struct {
 	MinBlock float64
 }
 
-func costasEvidence(s8 [8][ft8Symbols]float64) costasEvidenceResult {
+func costasEvidence(s8 *[8][ft8Symbols]float64) costasEvidenceResult {
 	var result costasEvidenceResult
 	sumLog := 0.0
 	count := 0
@@ -339,7 +342,7 @@ func costasEvidence(s8 [8][ft8Symbols]float64) costasEvidenceResult {
 	return result
 }
 
-func costasToneRatio(s8 [8][ft8Symbols]float64, sym int, targetTone int) (float64, bool) {
+func costasToneRatio(s8 *[8][ft8Symbols]float64, sym int, targetTone int) (float64, bool) {
 	target := s8[targetTone][sym]
 	bestOther := 0.0
 	for tone := 0; tone < 8; tone++ {

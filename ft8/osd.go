@@ -197,7 +197,7 @@ func osd17491(rx *[174]float64, channel *[174]float64, apmask *[174]int8) (ldpcR
 	for i, orig := range indices {
 		cw[orig] = best[i]
 	}
-	if !crc14OK(cw) {
+	if !crc14OK(&cw) {
 		return ldpcResult{}, false
 	}
 

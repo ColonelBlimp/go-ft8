@@ -31,7 +31,7 @@ import "github.com/ColonelBlimp/go-ft8/ft8"
 
 ## Basic Usage
 
-`DecodeMessages` expects a single FT8 receive slot as 12 kHz mono signed
+`DecodeMessages` expects a single FT8 receive slot as 12 kHz mono-signed
 16-bit PCM samples.
 
 ```go
@@ -81,24 +81,39 @@ for _, msg := range result.Messages {
 - Custom search thresholds, frequency ranges, candidate caps, block counts, and
   Costas gates are available through `DecoderOptions`.
 
-## Optional PocketFFT Backend
+## Production PocketFFT Backend
 
-The default build uses Gonum FFT support. An optional CGO PocketFFT backend is
-available with the `pocketfft` build tag:
+The default build uses pure-Go Gonum FFT support for portability. Production
+builds should use the faster CGO PocketFFT backend with the `pocketfft` build
+tag:
 
 ```sh
-go test -tags pocketfft ./... -run 'TestCRC14FastMatchesSlow|TestPackEncodeRoundTripsStandardMessages|TestDecodeOptions'
+go test -tags pocketfft ./...
 ```
 
 PocketFFT is vendored under `internal/pfft/pocketfft/` and keeps its upstream
-BSD 3-Clause license notices.
+BSD 3-Clause license notices. The pure-Go Gonum backend remains the fallback for
+builds where CGO or vendored C is not acceptable.
 
 ## Development
+
+This repository uses [Task](https://taskfile.dev/) for common development
+commands. Run the production test path with:
+
+```sh
+task test:prod
+```
+
+Run production decode benchmarks with:
+
+```sh
+task bench:prod
+```
 
 Run the fixture-independent smoke tests:
 
 ```sh
-go test ./... -run 'TestCRC14FastMatchesSlow|TestPackEncodeRoundTripsStandardMessages|TestDecodeOptions'
+task test:smoke
 ```
 
 The full corpus and diagnostic tests depend on the local WAV/truth fixture

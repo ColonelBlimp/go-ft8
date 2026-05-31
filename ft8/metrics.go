@@ -29,22 +29,21 @@ func analyzeCandidateWithDownsampler(dd []float32, ds *downsampler, cand candida
 }
 
 func analyzeCandidateWithDownsamplerForMetricSet(dd []float32, ds *downsampler, cand candidate, recompute bool, metricSet int) candidateAnalysis {
-	refined, cd0, start := refineCandidateDetails(dd, ds, cand, recompute)
-	cs, _ := ds.symbolSpectra(cd0, start)
+	refined := refineCandidateDetails(dd, ds, cand, recompute)
 	analysis := candidateAnalysis{
 		candidate: cand,
 		Refined:   refined,
 	}
 	if metricSet != 1 {
-		analysis.Metrics = computeSoftMetrics(cs, false)
+		analysis.Metrics = computeSoftMetrics(&ds.cs, false)
 	}
 	if metricSet != 0 {
-		analysis.PowerMetrics = computeSoftMetrics(cs, true)
+		analysis.PowerMetrics = computeSoftMetrics(&ds.cs, true)
 	}
 	return analysis
 }
 
-func computeSoftMetrics(cs [8][ft8Symbols]complex128, squared bool) softMetrics {
+func computeSoftMetrics(cs *[8][ft8Symbols]complex128, squared bool) softMetrics {
 	var m softMetrics
 	var s2buf [512]float64
 
