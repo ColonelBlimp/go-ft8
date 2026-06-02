@@ -214,15 +214,45 @@ func passesCostasGate(refined refinedCandidate, options decodeOptions) bool {
 
 func decodeCandidateMetrics(metrics *softMetrics, hashes *hashTable, options decodeOptions, diagnostics *DecodeDiagnostics) (candidateDecode, bool) {
 	for pass := 0; pass < 5; pass++ {
-		if decoded, ok := decodeMetricPass(metricPassSource(metrics, pass), &ft8NoAPMask, hashes, options, diagnostics); ok {
+		if decoded, ok := decodeMetricPass(metricPassSource(metrics, pass), hashes, options, diagnostics); ok {
 			return decoded, true
 		}
 	}
-	mask := cqAPMask()
-	if decoded, ok := decodeAPMetricPass(&metrics.Single, mask, hashes, options, diagnostics); ok {
+	if decoded, ok := decodeAPProfiles(metrics, ft8DefaultAPProfiles, true, hashes, options, diagnostics); ok {
 		return decoded, true
 	}
-	return decodeAPMetricPass(&metrics.Triple, mask, hashes, options, diagnostics)
+	if options.enableBroadAP {
+		if decoded, ok := decodeAPProfiles(metrics, ft8BroadAPProfiles, false, hashes, options, diagnostics); ok {
+			return decoded, true
+		}
+	}
+	return decodeAPCallHints(metrics, hashes, options, diagnostics)
+}
+
+func decodeAPProfiles(metrics *softMetrics, profiles []apProfile, allowOSD bool, hashes *hashTable, options decodeOptions, diagnostics *DecodeDiagnostics) (candidateDecode, bool) {
+	for i := range profiles {
+		profile := &profiles[i]
+		if decoded, ok := decodeAPMetricPass(&metrics.Single, profile, allowOSD, hashes, options, diagnostics); ok {
+			return decoded, true
+		}
+		if decoded, ok := decodeAPMetricPass(&metrics.Triple, profile, allowOSD, hashes, options, diagnostics); ok {
+			return decoded, true
+		}
+	}
+	return candidateDecode{}, false
+}
+
+func decodeAPCallHints(metrics *softMetrics, hashes *hashTable, options decodeOptions, diagnostics *DecodeDiagnostics) (candidateDecode, bool) {
+	var selections [ft8MaxAPCallHypotheses]apHintSelection
+	n := selectAPCallHintHypotheses(metrics, options.apCallHints, options.maxAPCallHypotheses, diagnostics, &selections)
+	for i := 0; i < n; i++ {
+		selection := selections[i]
+		profile := apHintProfile(options.apCallHints[selection.hint], selection.field)
+		if decoded, ok := decodeAPMetricPass(apHintMetric(metrics, selection), &profile, false, hashes, options, diagnostics); ok {
+			return decoded, true
+		}
+	}
+	return candidateDecode{}, false
 }
 
 func metricPassSource(metrics *softMetrics, pass int) *[174]float64 {
@@ -240,19 +270,19 @@ func metricPassSource(metrics *softMetrics, pass int) *[174]float64 {
 	}
 }
 
-func decodeMetricPass(metric *[174]float64, apmask *[174]int8, hashes *hashTable, options decodeOptions, diagnostics *DecodeDiagnostics) (candidateDecode, bool) {
+func decodeMetricPass(metric *[174]float64, hashes *hashTable, options decodeOptions, diagnostics *DecodeDiagnostics) (candidateDecode, bool) {
 	var llr [174]float64
 	for i, v := range metric {
 		llr[i] = ft8ScaleFac * v
 	}
 	shapeLLR(&llr, options)
-	return decodeLLRPass(&llr, apmask, hashes, options, diagnostics)
+	return decodeLLRPass(&llr, &ft8NoAPMask, "", "", true, hashes, options, diagnostics)
 }
 
-func decodeAPMetricPass(metric *[174]float64, apmask *[174]int8, hashes *hashTable, options decodeOptions, diagnostics *DecodeDiagnostics) (candidateDecode, bool) {
-	llr := apCQPass(*metric)
+func decodeAPMetricPass(metric *[174]float64, profile *apProfile, allowOSD bool, hashes *hashTable, options decodeOptions, diagnostics *DecodeDiagnostics) (candidateDecode, bool) {
+	llr := apProfilePass(*metric, profile)
 	shapeLLR(&llr, options)
-	return decodeLLRPass(&llr, apmask, hashes, options, diagnostics)
+	return decodeLLRPass(&llr, &profile.mask, profile.name, profile.source, allowOSD, hashes, options, diagnostics)
 }
 
 func shapeLLR(llr *[174]float64, options decodeOptions) {
@@ -296,13 +326,13 @@ func winsorizeLLR(llr *[174]float64, factor float64) {
 	}
 }
 
-func decodeLLRPass(llr *[174]float64, apmask *[174]int8, hashes *hashTable, options decodeOptions, diagnostics *DecodeDiagnostics) (candidateDecode, bool) {
+func decodeLLRPass(llr *[174]float64, apmask *[174]int8, apProfileName string, apSource string, allowOSD bool, hashes *hashTable, options decodeOptions, diagnostics *DecodeDiagnostics) (candidateDecode, bool) {
 	if diagnostics != nil {
-		diagnostics.LDPCAttempts++
+		diagnostics.recordLDPCAttempt(apProfileName, apSource)
 	}
 	var result ldpcResult
 	var ok bool
-	if options.enableOSD {
+	if options.enableOSD && allowOSD {
 		result, ok = decode17491HybridWithAP(llr, apmask)
 	} else {
 		result, ok, _ = decode17491BP(llr, apmask, 0)
@@ -316,12 +346,14 @@ func decodeLLRPass(llr *[174]float64, apmask *[174]int8, hashes *hashTable, opti
 	if result.HardErrors < 0 || result.HardErrors > 36 {
 		if diagnostics != nil {
 			diagnostics.RejectedHardErrors++
+			diagnostics.recordAPRejectedAfterLDPC(apProfileName, apSource)
 		}
 		return candidateDecode{}, false
 	}
 	if allZeroCodeword(result.Codeword) {
 		if diagnostics != nil {
 			diagnostics.RejectedAllZero++
+			diagnostics.recordAPRejectedAfterLDPC(apProfileName, apSource)
 		}
 		return candidateDecode{}, false
 	}
@@ -329,14 +361,19 @@ func decodeLLRPass(llr *[174]float64, apmask *[174]int8, hashes *hashTable, opti
 	if !ok {
 		if diagnostics != nil {
 			diagnostics.UnpackFailures++
+			diagnostics.recordAPRejectedAfterLDPC(apProfileName, apSource)
 		}
 		return candidateDecode{}, false
 	}
 	if strings.Contains(msg, "/R") || strings.HasPrefix(msg, "TU; ") {
 		if diagnostics != nil {
 			diagnostics.RejectedMessageFilter++
+			diagnostics.recordAPRejectedAfterLDPC(apProfileName, apSource)
 		}
 		return candidateDecode{}, false
+	}
+	if diagnostics != nil {
+		diagnostics.recordAPSuccess(apProfileName, apSource)
 	}
 	return candidateDecode{Text: msg, Result: result}, true
 }

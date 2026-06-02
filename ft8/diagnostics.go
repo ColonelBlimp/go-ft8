@@ -41,6 +41,35 @@ type DecodeDiagnostics struct {
 	RejectedCostas int
 	// LDPCAttempts is the number of metric/AP passes handed to the LDPC decoder.
 	LDPCAttempts int
+	// MetricLDPCAttempts is the number of non-AP metric passes handed to the LDPC decoder.
+	MetricLDPCAttempts int
+	// APAttempts is the number of a-priori passes handed to the LDPC decoder.
+	APAttempts int
+	// APAttemptsByProfile records AP attempts by profile name.
+	APAttemptsByProfile map[string]int
+	// APAttemptsBySource records AP attempts by upstream or built-in AP source.
+	APAttemptsBySource map[string]int
+	// APSuccesses counts AP passes that produced an accepted candidate decode.
+	APSuccesses int
+	// APSuccessesByProfile records accepted AP decodes by profile name.
+	APSuccessesByProfile map[string]int
+	// APSuccessesBySource records accepted AP decodes by upstream or built-in AP source.
+	APSuccessesBySource map[string]int
+	// APRejectedAfterLDPC counts AP passes that produced a valid codeword that
+	// was later rejected by hard-error, all-zero, unpack, or message filters.
+	APRejectedAfterLDPC int
+	// APRejectedAfterLDPCByProfile records post-LDPC AP rejections by profile name.
+	APRejectedAfterLDPCByProfile map[string]int
+	// APRejectedAfterLDPCBySource records post-LDPC AP rejections by AP source.
+	APRejectedAfterLDPCBySource map[string]int
+	// APCallHints is the number of normalized call hints supplied to the decoder.
+	APCallHints int
+	// APHintProfilesScored is the number of call-field hint profiles cheaply scored.
+	APHintProfilesScored int
+	// APHintHypothesesSelected is the number of scored hint hypotheses selected for LDPC.
+	APHintHypothesesSelected int
+	// APHintHypothesesBelowThreshold is the number of scored hint hypotheses rejected by the cheap score gate.
+	APHintHypothesesBelowThreshold int
 	// LDPCFailures counts LDPC attempts that did not produce a valid codeword.
 	LDPCFailures int
 	// RejectedHardErrors counts decoded codewords rejected by hard-error bounds.
@@ -101,4 +130,67 @@ func newDecodeDiagnostics(iwave []int16) DecodeDiagnostics {
 		diagnostics.ExtraInputSamples = len(iwave) - ft8DecodeBufferSamples
 	}
 	return diagnostics
+}
+
+func (diagnostics *DecodeDiagnostics) recordLDPCAttempt(apProfileName string, apSource string) {
+	diagnostics.LDPCAttempts++
+	if apProfileName == "" {
+		diagnostics.MetricLDPCAttempts++
+		return
+	}
+	diagnostics.APAttempts++
+	if diagnostics.APAttemptsByProfile == nil {
+		diagnostics.APAttemptsByProfile = make(map[string]int)
+	}
+	diagnostics.APAttemptsByProfile[apProfileName]++
+	if apSource == "" {
+		apSource = "ap"
+	}
+	if diagnostics.APAttemptsBySource == nil {
+		diagnostics.APAttemptsBySource = make(map[string]int)
+	}
+	diagnostics.APAttemptsBySource[apSource]++
+}
+
+func (diagnostics *DecodeDiagnostics) recordAPSuccess(apProfileName string, apSource string) {
+	if apProfileName == "" {
+		return
+	}
+	diagnostics.APSuccesses++
+	if diagnostics.APSuccessesByProfile == nil {
+		diagnostics.APSuccessesByProfile = make(map[string]int)
+	}
+	diagnostics.APSuccessesByProfile[apProfileName]++
+	if apSource == "" {
+		apSource = "ap"
+	}
+	if diagnostics.APSuccessesBySource == nil {
+		diagnostics.APSuccessesBySource = make(map[string]int)
+	}
+	diagnostics.APSuccessesBySource[apSource]++
+}
+
+func (diagnostics *DecodeDiagnostics) recordAPRejectedAfterLDPC(apProfileName string, apSource string) {
+	if apProfileName == "" {
+		return
+	}
+	diagnostics.APRejectedAfterLDPC++
+	if diagnostics.APRejectedAfterLDPCByProfile == nil {
+		diagnostics.APRejectedAfterLDPCByProfile = make(map[string]int)
+	}
+	diagnostics.APRejectedAfterLDPCByProfile[apProfileName]++
+	if apSource == "" {
+		apSource = "ap"
+	}
+	if diagnostics.APRejectedAfterLDPCBySource == nil {
+		diagnostics.APRejectedAfterLDPCBySource = make(map[string]int)
+	}
+	diagnostics.APRejectedAfterLDPCBySource[apSource]++
+}
+
+func (diagnostics *DecodeDiagnostics) recordAPHintScored(hints int, scored int, selected int, belowThreshold int) {
+	diagnostics.APCallHints = hints
+	diagnostics.APHintProfilesScored += scored
+	diagnostics.APHintHypothesesSelected += selected
+	diagnostics.APHintHypothesesBelowThreshold += belowThreshold
 }

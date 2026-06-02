@@ -3,6 +3,25 @@
 
 package ft8
 
+const (
+	ft8DefaultMaxAPCallHypotheses = 2
+	ft8MaxAPCallHypotheses        = 8
+	ft8MaxAPCallHints             = 200
+)
+
+// APCallHint describes one upstream-ranked callsign hint for a-priori decode.
+//
+// The decoder copies, normalizes, deduplicates, and caps hints, but it does not
+// rank them by logbook policy. Callers should pass hints in priority order.
+type APCallHint struct {
+	// Call is a callsign encodable as a standard FT8 28-bit callsign token.
+	Call string
+	// Weight is optional caller policy metadata retained for future scoring.
+	Weight float64
+	// Source labels where the hint came from, such as "recent" or "worked".
+	Source string
+}
+
 // DecoderOptions controls non-default decoder behavior.
 //
 // The zero value is strict mode and preserves the package defaults used by
@@ -31,6 +50,17 @@ type DecoderOptions struct {
 	CostasMinBlock float64
 	// EnableOSD enables the experimental OSD-2/MRB fallback after BP misses.
 	EnableOSD bool
+	// EnableBroadAP enables additional experimental a-priori profiles beyond
+	// the default CQ profile. It increases decode work and is intended for deep
+	// searches.
+	EnableBroadAP bool
+	// APCallHints supplies upstream-ranked callsign hints for bounded BP-only
+	// AP hypotheses. The decoder copies, normalizes, deduplicates, and caps
+	// hints at 200 entries without applying logbook policy ranking.
+	APCallHints []APCallHint
+	// MaxAPCallHypotheses caps AP call-hint hypotheses tried per candidate when
+	// positive. The default is 2 and the maximum accepted by checked APIs is 8.
+	MaxAPCallHypotheses int
 }
 
 // DeepDecoderOptions returns an experimental configuration that searches
@@ -44,22 +74,26 @@ func DeepDecoderOptions() DecoderOptions {
 		HardSyncMin:   6,
 		Blocks:        []int{50, 41, 43},
 		EnableOSD:     true,
+		EnableBroadAP: true,
 	}
 }
 
 type decodeOptions struct {
-	syncMin         float64
-	maxCandidates   int
-	minFreqHz       int
-	maxFreqHz       int
-	blocks          [4]int
-	blockCount      int
-	llrWinsorFactor float64
-	hardSyncMin     int
-	costasMinWins   int
-	costasMinGeo    float64
-	costasMinBlock  float64
-	enableOSD       bool
+	syncMin             float64
+	maxCandidates       int
+	minFreqHz           int
+	maxFreqHz           int
+	blocks              [4]int
+	blockCount          int
+	llrWinsorFactor     float64
+	hardSyncMin         int
+	costasMinWins       int
+	costasMinGeo        float64
+	costasMinBlock      float64
+	enableOSD           bool
+	enableBroadAP       bool
+	apCallHints         []apCallHint
+	maxAPCallHypotheses int
 }
 
 func normalizeDecoderOptions(o DecoderOptions) decodeOptions {
@@ -103,6 +137,15 @@ func normalizeDecoderOptions(o DecoderOptions) decodeOptions {
 		out.costasMinBlock = o.CostasMinBlock
 	}
 	out.enableOSD = o.EnableOSD
+	out.enableBroadAP = o.EnableBroadAP
+	out.apCallHints = normalizeAPCallHints(o.APCallHints)
+	out.maxAPCallHypotheses = ft8DefaultMaxAPCallHypotheses
+	if o.MaxAPCallHypotheses > 0 {
+		out.maxAPCallHypotheses = o.MaxAPCallHypotheses
+		if out.maxAPCallHypotheses > ft8MaxAPCallHypotheses {
+			out.maxAPCallHypotheses = ft8MaxAPCallHypotheses
+		}
+	}
 	return out
 }
 
@@ -144,5 +187,8 @@ func decoderOptionsEmpty(o DecoderOptions) bool {
 		o.CostasMinWins == 0 &&
 		o.CostasMinGeo == 0 &&
 		o.CostasMinBlock == 0 &&
-		!o.EnableOSD
+		!o.EnableOSD &&
+		!o.EnableBroadAP &&
+		len(o.APCallHints) == 0 &&
+		o.MaxAPCallHypotheses == 0
 }

@@ -7,7 +7,9 @@
 // call (*Decoder).DecodeMessages once per 15-second FT8 slot. Decoder instances
 // retain hash/history state and are not safe for concurrent use.
 // DecodeMessagesWithReport and (*Decoder).DecodeMessagesWithReport return the
-// same messages plus aggregate diagnostics for production observability.
+// same messages plus aggregate diagnostics for production observability,
+// including AP profile/source attempt, success, and post-LDPC rejection
+// counters.
 // DecodeMessagesChecked and (*Decoder).DecodeMessagesChecked add strict input
 // and option validation for service integrations.
 // DecodeStructuredWithReport and DecodeStructuredChecked provide the same
@@ -20,6 +22,11 @@
 // variant, and type 4 compound/nonstandard-call messages. DXpedition, Field
 // Day, telemetry, RTTY Roundup, and type 5 EU VHF contest payloads are not yet
 // unpacked.
+// The default decoder includes a conservative CQ AP profile. EnableBroadAP and
+// DeepDecoderOptions add experimental directed-CQ AP profiles.
+// APCallHints and (*Decoder).SetAPCallHints provide upstream-ranked callsign
+// hints for bounded BP-only AP; the decoder copies, normalizes, deduplicates,
+// caps, cheaply scores per candidate, and tries only the top hypotheses.
 //
 // EncodeStandardMessage exposes the protocol encoder for supported standard
 // FT8 messages. The package deliberately does not handle audio device output,

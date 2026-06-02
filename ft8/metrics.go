@@ -164,6 +164,10 @@ func normalizeMetric(metric *[174]float64) {
 }
 
 func apCQPass(metric [174]float64) [174]float64 {
+	return apProfilePass(metric, &ft8CQAPProfile)
+}
+
+func apProfilePass(metric [174]float64, profile *apProfile) [174]float64 {
 	var llr [174]float64
 	maxAbs := 0.0
 	for i, v := range metric {
@@ -177,34 +181,71 @@ func apCQPass(metric [174]float64) [174]float64 {
 		apMag = ft8ScaleFac
 	}
 
-	for i, bit := range ft8APCQBits {
-		if bit == 1 {
+	for i, known := range profile.mask {
+		if known == 0 {
+			continue
+		}
+		if profile.bits[i] == 1 {
 			llr[i] = apMag
 		} else {
 			llr[i] = -apMag
 		}
 	}
-	llr[74] = -apMag
-	llr[75] = -apMag
-	llr[76] = apMag
 	return llr
 }
 
-var ft8APCQBits = [29]int8{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0}
 var ft8NoAPMask [174]int8
-var ft8CQAPMask = initCQAPMask()
+var ft8CQAPProfile = initCall1APProfile("cq", "CQ", 1)
+var ft8DefaultAPProfiles = []apProfile{ft8CQAPProfile}
+var ft8BroadAPProfiles = initBroadAPProfiles()
 
-func cqAPMask() *[174]int8 {
-	return &ft8CQAPMask
+type apProfile struct {
+	name   string
+	source string
+	bits   [174]int8
+	mask   [174]int8
 }
 
-func initCQAPMask() [174]int8 {
-	var mask [174]int8
-	for i := 0; i < 29; i++ {
-		mask[i] = 1
+func cqAPMask() *[174]int8 {
+	return &ft8CQAPProfile.mask
+}
+
+func initBroadAPProfiles() []apProfile {
+	profiles := []apProfile{
+		initCall1APProfile("cq-dx", "CQ_DX", 1),
+		initCall1APProfile("cq-test", "CQ_TEST", 1),
+		initCall1APProfile("cq-pota", "CQ_POTA", 1),
+		initCall1APProfile("cq-sota", "CQ_SOTA", 1),
+		initCall1APProfile("cq-qrp", "CQ_QRP", 1),
+		initCall1APProfile("cq-cota", "CQ_COTA", 1),
 	}
-	mask[74] = 1
-	mask[75] = 1
-	mask[76] = 1
-	return mask
+	return profiles
+}
+
+func initCall1APProfile(name, callToken string, i3 int) apProfile {
+	profile := initStandardTypeAPProfile(name, i3)
+	n28, ok := pack28(callToken)
+	if !ok {
+		panic("invalid AP call token: " + callToken)
+	}
+	setAPBits(&profile, 0, 28, n28)
+	setAPBits(&profile, 28, 1, 0)
+	return profile
+}
+
+func initStandardTypeAPProfile(name string, i3 int) apProfile {
+	var profile apProfile
+	profile.name = name
+	profile.source = name
+	setAPBits(&profile, 74, 3, i3)
+	return profile
+}
+
+func setAPBits(profile *apProfile, start int, width int, value int) {
+	for i := 0; i < width; i++ {
+		shift := uint(width - 1 - i)
+		pos := start + i
+		profile.bits[pos] = int8((value >> shift) & 1)
+		profile.mask[pos] = 1
+	}
 }

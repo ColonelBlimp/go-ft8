@@ -48,6 +48,7 @@ func TestDecodeMessagesCheckedRejectsInvalidOptions(t *testing.T) {
 		{name: "hard sync too high", options: DecoderOptions{HardSyncMin: ft8SyncSyms + 1}},
 		{name: "costas wins too high", options: DecoderOptions{CostasMinWins: ft8SyncSyms + 1}},
 		{name: "nan costas geo", options: DecoderOptions{CostasMinGeo: math.NaN()}},
+		{name: "too many AP hypotheses", options: DecoderOptions{MaxAPCallHypotheses: ft8MaxAPCallHypotheses + 1}},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

@@ -97,6 +97,9 @@ fmt.Println(report.Messages)
 fmt.Printf("%+v\n", report.Diagnostics)
 ```
 
+`DecodeDiagnostics` separates non-AP LDPC attempts from AP attempts and records
+AP attempt, success, and post-LDPC rejection counts by profile name and source.
+
 For station-manager style integrations that should reject malformed slots or
 configuration mistakes before decode work starts, use the checked API:
 
@@ -168,6 +171,63 @@ https://github.com/WSJTX/wsjtx/blob/master/lib/77bit/77bit.txt
   `DecodeStructured(..., StructuredDecodeOptions{IncludeDeep: true})`.
 - Custom search thresholds, frequency ranges, candidate caps, block counts, and
   Costas gates are available through `DecoderOptions`.
+- The default decoder includes a conservative CQ AP pass. `EnableBroadAP` adds
+  experimental standard-message AP profiles for exact directed-CQ variants used
+  by deep searches.
+- `APCallHints` supplies upstream-ranked callsign hints for bounded, BP-only AP.
+  The decoder copies, normalizes, deduplicates, caps at 200 hints, cheaply
+  scores call1/call2 hypotheses per candidate, and tries only the top
+  `MaxAPCallHypotheses` matches. A long-lived `Decoder` can refresh hints with
+  `SetAPCallHints`.
+
+## AP Call Hints
+
+AP call hints let an application provide a ranked callsign list from sources
+such as recently heard calls, logbook state, watchlists, award needs, or spots.
+The codec does not query databases or apply application ranking policy. It only
+copies, normalizes, deduplicates, caps, cheaply scores, and tries a bounded
+number of BP-only hypotheses per candidate.
+
+For live receiver streams, prefer the stateful decoder so hash history, A7
+hints, and AP hints share the same per-stream lifetime:
+
+```go
+decoder := ft8.NewDecoderWithOptions(ft8.DeepDecoderOptions())
+
+decoder.SetAPCallHints([]ft8.APCallHint{
+	{Call: "K1ABC", Source: "recent", Weight: 10},
+	{Call: "W9XYZ", Source: "worked", Weight: 5},
+})
+
+report := decoder.DecodeMessagesWithReport(pcm)
+fmt.Println(report.Messages)
+fmt.Printf("%+v\n", report.Diagnostics)
+```
+
+Stateless decode also accepts hints through `DecoderOptions`, but callers must
+pass the ranked hint list on every slot:
+
+```go
+report := ft8.DecodeMessagesWithReport(pcm, ft8.DecoderOptions{
+	APCallHints: []ft8.APCallHint{
+		{Call: "K1ABC", Source: "worked"},
+	},
+	MaxAPCallHypotheses: 2,
+})
+```
+
+Hint handling is intentionally bounded:
+
+- At most 200 normalized calls are retained.
+- Duplicate and unsupported calls are ignored.
+- Hints preserve caller order as upstream policy ranking.
+- Only call1/call2 standard-message hypotheses are scored.
+- The default `MaxAPCallHypotheses` is 2; checked APIs accept at most 8.
+- Hint AP attempts are BP-only by default.
+
+`DecodeDiagnostics` reports AP work by profile and source, plus hint-specific
+counters such as `APCallHints`, `APHintProfilesScored`,
+`APHintHypothesesSelected`, and `APHintHypothesesBelowThreshold`.
 
 ## Production PocketFFT Backend
 
@@ -192,14 +252,16 @@ WAV fixtures:
 ```sh
 GOCACHE=/tmp/go-build go test -tags pocketfft ./ft8 -run=^$ \
   -bench='BenchmarkDecode(Messages|Structured).*PerFixture' \
-  -benchmem -benchtime=1x -count=3
+  -benchmem -benchtime=1x -count=1
 ```
 
 | Benchmark | Mean per 15s slot | Observed fixture range |
 | --------- | ----------------- | ---------------------- |
-| Strict `DecodeMessages` | 0.607 s | 0.568-0.677 s |
-| Deep `DecodeMessagesWithOptions(DeepDecoderOptions())` | 3.84 s | 3.21-4.43 s |
-| Structured strict+deep `DecodeStructured(...IncludeDeep)` | 4.43 s | 3.78-5.07 s |
+| Strict `DecodeMessages` | 0.592 s | 0.553-0.660 s |
+| Deep without broad AP | 3.80 s | 3.18-4.31 s |
+| Deep `DecodeMessagesWithOptions(DeepDecoderOptions())` | 5.04 s | 4.19-5.87 s |
+| Deep with 200 AP call hints | 5.16 s | 4.18-6.08 s |
+| Structured strict+deep `DecodeStructured(...IncludeDeep)` | 5.70 s | 4.77-6.58 s |
 
 These numbers are local reference measurements, not performance guarantees.
 Wall time varies with CPU, CGO toolchain, OS scheduling, fixture content, and

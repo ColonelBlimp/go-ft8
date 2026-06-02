@@ -126,6 +126,9 @@ func validateDecoderOptions(options DecoderOptions) error {
 	if !finiteNonNegative(options.CostasMinBlock) {
 		return invalidDecoderOption("CostasMinBlock", "must be finite and non-negative")
 	}
+	if options.MaxAPCallHypotheses < 0 || options.MaxAPCallHypotheses > ft8MaxAPCallHypotheses {
+		return invalidDecoderOption("MaxAPCallHypotheses", "must be between 0 and %d", ft8MaxAPCallHypotheses)
+	}
 	return nil
 }
 

@@ -16,6 +16,19 @@ func BenchmarkDecodeMessagesDeepPerFixture(b *testing.B) {
 	benchmarkDecodeMessagesPerFixture(b, DeepDecoderOptions())
 }
 
+func BenchmarkDecodeMessagesDeepNoBroadAPPerFixture(b *testing.B) {
+	options := DeepDecoderOptions()
+	options.EnableBroadAP = false
+	benchmarkDecodeMessagesPerFixture(b, options)
+}
+
+func BenchmarkDecodeMessagesDeepAPCallHintsPerFixture(b *testing.B) {
+	options := DeepDecoderOptions()
+	options.APCallHints = benchmarkAPCallHints(ft8MaxAPCallHints)
+	options.MaxAPCallHypotheses = ft8DefaultMaxAPCallHypotheses
+	benchmarkDecodeMessagesPerFixture(b, options)
+}
+
 func BenchmarkDecodeStructuredDeepPerFixture(b *testing.B) {
 	matches := corpusWAVFiles(b)
 	options := StructuredDecodeOptions{IncludeDeep: true}
@@ -30,6 +43,18 @@ func BenchmarkDecodeStructuredDeepPerFixture(b *testing.B) {
 			}
 		})
 	}
+}
+
+func benchmarkAPCallHints(n int) []APCallHint {
+	hints := make([]APCallHint, 0, n)
+	for i := 0; len(hints) < n; i++ {
+		call := testAPCall(i)
+		if _, ok := pack28(call); !ok {
+			continue
+		}
+		hints = append(hints, APCallHint{Call: call, Source: "bench"})
+	}
+	return hints
 }
 
 func benchmarkDecodeMessagesPerFixture(b *testing.B, options DecoderOptions) {

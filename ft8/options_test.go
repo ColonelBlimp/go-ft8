@@ -13,11 +13,26 @@ func TestDeepDecoderOptionsEnableOSD(t *testing.T) {
 	if normalizeDecoderOptions(DecoderOptions{}).enableOSD {
 		t.Fatal("strict options unexpectedly enable OSD")
 	}
+	if normalizeDecoderOptions(DecoderOptions{}).enableBroadAP {
+		t.Fatal("strict options unexpectedly enable broad AP")
+	}
 	if !normalizeDecoderOptions(DeepDecoderOptions()).enableOSD {
 		t.Fatal("deep options did not enable OSD")
 	}
+	if !normalizeDecoderOptions(DeepDecoderOptions()).enableBroadAP {
+		t.Fatal("deep options did not enable broad AP")
+	}
 	if decoderOptionsEmpty(DecoderOptions{EnableOSD: true}) {
 		t.Fatal("OSD-only options treated as empty")
+	}
+	if decoderOptionsEmpty(DecoderOptions{EnableBroadAP: true}) {
+		t.Fatal("broad-AP-only options treated as empty")
+	}
+	if decoderOptionsEmpty(DecoderOptions{APCallHints: []APCallHint{{Call: "K1ABC"}}}) {
+		t.Fatal("AP-call-hints-only options treated as empty")
+	}
+	if decoderOptionsEmpty(DecoderOptions{MaxAPCallHypotheses: 1}) {
+		t.Fatal("AP-call-hypotheses-only options treated as empty")
 	}
 }
 

@@ -33,10 +33,21 @@ func NewDecoder() *Decoder {
 // for permissive decode methods; DecodeMessagesChecked validates the original
 // options supplied here before advancing decoder state.
 func NewDecoderWithOptions(options DecoderOptions) *Decoder {
+	rawOptions := options
+	rawOptions.APCallHints = copyAPCallHints(options.APCallHints)
 	return &Decoder{
 		options:    normalizeDecoderOptions(options),
-		rawOptions: options,
+		rawOptions: rawOptions,
 	}
+}
+
+// SetAPCallHints replaces the decoder's upstream-ranked callsign AP hints.
+//
+// The decoder copies the supplied slice, normalizes/deduplicates calls, caps
+// usable hints at 200, and preserves caller order as policy ranking.
+func (d *Decoder) SetAPCallHints(hints []APCallHint) {
+	d.rawOptions.APCallHints = copyAPCallHints(hints)
+	d.options.apCallHints = normalizeAPCallHints(hints)
 }
 
 // DecodeMessages decodes one 15-second FT8 slot from 12 kHz mono signed-16-bit

@@ -7,7 +7,7 @@ import "testing"
 
 func FuzzDecodePublicAPIsNoPanic(f *testing.F) {
 	for api := uint8(0); api < 13; api++ {
-		f.Add([]byte{api, api + 1, api + 2}, api, api%8)
+		f.Add([]byte{api, api + 1, api + 2}, api, api%10)
 	}
 
 	f.Fuzz(func(t *testing.T, raw []byte, api uint8, optionSeed uint8) {
@@ -68,7 +68,7 @@ func fuzzInt16Samples(raw []byte) []int16 {
 }
 
 func fuzzDecoderOptions(seed uint8) DecoderOptions {
-	switch seed % 8 {
+	switch seed % 10 {
 	case 0:
 		return DecoderOptions{}
 	case 1:
@@ -83,7 +83,13 @@ func fuzzDecoderOptions(seed uint8) DecoderOptions {
 		return DecoderOptions{Blocks: []int{50, 50}}
 	case 6:
 		return DecoderOptions{MinFreqHz: 3200, MaxFreqHz: 200}
-	default:
+	case 7:
 		return DecoderOptions{CostasMinGeo: 1.1, CostasMinBlock: 0.8}
+	case 8:
+		return DecoderOptions{EnableBroadAP: true}
+	case 9:
+		return DecoderOptions{APCallHints: []APCallHint{{Call: "K1ABC", Source: "fuzz"}}, MaxAPCallHypotheses: 1}
+	default:
+		return DecoderOptions{}
 	}
 }
