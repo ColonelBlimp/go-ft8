@@ -12,9 +12,11 @@ import (
 // DecodedMessage describes one recovered FT8 message and the signal/decode
 // metrics associated with the candidate that produced it.
 type DecodedMessage struct {
-	Text           string
-	FreqHz         float64
-	DTSec          float64
+	Text   string
+	FreqHz float64
+	DTSec  float64
+	// Sync is the normalized coarse sync-search score used by SyncMin.
+	// Hint-only A7 decodes do not have a coarse search score and report zero.
 	Sync           float64
 	HardSync       int
 	CostasGeo      float64
@@ -95,7 +97,7 @@ func decodeMessagesCoreWithDiagnostics(iwave []int16, a7Hints []a7Hint, hashes *
 					Text:           decoded.Text,
 					FreqHz:         analysis.Refined.FreqHz,
 					DTSec:          analysis.Refined.DTSec - 0.5,
-					Sync:           analysis.Refined.Sync,
+					Sync:           analysis.candidate.Sync,
 					HardSync:       analysis.Refined.HardSync,
 					CostasGeo:      analysis.Refined.CostasGeo,
 					CostasMinBlock: analysis.Refined.CostasMinBlock,

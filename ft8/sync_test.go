@@ -405,6 +405,26 @@ func TestStrictCorpusDecodeParity(t *testing.T) {
 	}
 }
 
+func TestDecodedMessagesExposeNormalizedSyncScore(t *testing.T) {
+	samples := loadCorpusWAV(t, "20m_slot2.wav")
+	got := DecodeMessages(samples)
+	if len(got) == 0 {
+		t.Fatal("DecodeMessages returned no messages")
+	}
+	for _, msg := range got {
+		if math.IsNaN(msg.Sync) || math.IsInf(msg.Sync, 0) {
+			t.Fatalf("non-finite sync for %q: %v", msg.Text, msg.Sync)
+		}
+		if msg.Sync < ft8DefaultSyncMin {
+			t.Fatalf("sync below default threshold for %q: got %.2f, want >= %.2f",
+				msg.Text, msg.Sync, ft8DefaultSyncMin)
+		}
+		if msg.Sync > 100 {
+			t.Fatalf("sync looks like raw correlation energy for %q: %.2f", msg.Text, msg.Sync)
+		}
+	}
+}
+
 func TestDiagnosticOracleGrid(t *testing.T) {
 	if os.Getenv("DECODE_DIAGNOSTICS") == "" {
 		t.Skip("set DECODE_DIAGNOSTICS=1")

@@ -209,7 +209,7 @@ func decodeA7Hints(dd []float32, hints []a7Hint, seen map[string]bool) []Decoded
 	out := make([]DecodedMessage, 0)
 	recompute := true
 	for _, hint := range hints {
-		cand := candidate{FreqHz: hint.FreqHz, DTSec: hint.DTSec, Sync: 99}
+		cand := candidate{FreqHz: hint.FreqHz, DTSec: hint.DTSec}
 		analysis := analyzeCandidateWithDownsampler(dd, ds, cand, recompute)
 		recompute = false
 		decoded, ok := decodeA7Candidate(&analysis, hint, cache)
@@ -221,7 +221,7 @@ func decodeA7Hints(dd []float32, hints []a7Hint, seen map[string]bool) []Decoded
 			Text:           decoded.Text,
 			FreqHz:         analysis.Refined.FreqHz,
 			DTSec:          analysis.Refined.DTSec - 0.5,
-			Sync:           analysis.Refined.Sync,
+			Sync:           analysis.candidate.Sync,
 			HardSync:       analysis.Refined.HardSync,
 			CostasGeo:      analysis.Refined.CostasGeo,
 			CostasMinBlock: analysis.Refined.CostasMinBlock,
