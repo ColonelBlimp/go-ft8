@@ -41,7 +41,7 @@ func osd17491(rx *[174]float64, channel *[174]float64, apmask *[174]int8) (ldpcR
 	var absrx [n]float64
 	var order [n]int
 	for i, v := range rx {
-		if v >= 0 {
+		if v > 0 {
 			hard[i] = 1
 		}
 		absrx[i] = math.Abs(v)
@@ -70,6 +70,8 @@ func osd17491(rx *[174]float64, channel *[174]float64, apmask *[174]int8) (ldpcR
 		if limit > n {
 			limit = n
 		}
+		// Match WSJT-X OSD's bounded pivot search. If the MRB basis cannot be
+		// diagonalized within this window, abandon this OSD attempt.
 		for col := diag; col < limit; col++ {
 			if genmrb[diag][col] == 1 {
 				pivot = col
@@ -107,6 +109,12 @@ func osd17491(rx *[174]float64, channel *[174]float64, apmask *[174]int8) (ldpcR
 	var rapmask [n]int8
 	for i, orig := range indices {
 		rhard[i] = hard[orig]
+		if apmask[orig] == 1 {
+			rhard[i] = 0
+			if channel[orig] > 0 {
+				rhard[i] = 1
+			}
+		}
 		rabs[i] = absrx[orig]
 		rapmask[i] = apmask[orig]
 	}

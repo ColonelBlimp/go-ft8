@@ -21,7 +21,6 @@ type hashEntry struct {
 }
 
 type hashTable struct {
-	calls12 [4096]string
 	calls22 []hashEntry
 }
 
@@ -238,14 +237,12 @@ func (h *hashTable) Save(call string) {
 	if call == "" || call == "..." || strings.Contains(call, "<") || len(call) < 3 {
 		return
 	}
-	n12 := hashCall(call, 12)
-	if n12 >= 0 && n12 < len(h.calls12) {
-		h.calls12[n12] = call
-	}
 	n22 := hashCall(call, 22)
 	for i := range h.calls22 {
 		if h.calls22[i].hash == n22 {
-			h.calls22[i].call = call
+			entry := hashEntry{hash: n22, call: call}
+			copy(h.calls22[1:i+1], h.calls22[:i])
+			h.calls22[0] = entry
 			return
 		}
 	}
@@ -256,10 +253,15 @@ func (h *hashTable) Save(call string) {
 }
 
 func (h *hashTable) Lookup12(hash int) string {
-	if hash < 0 || hash >= len(h.calls12) {
+	if hash < 0 || hash >= 1<<12 {
 		return ""
 	}
-	return h.calls12[hash]
+	for _, entry := range h.calls22 {
+		if hashCall(entry.call, 12) == hash {
+			return entry.call
+		}
+	}
+	return ""
 }
 
 func (h *hashTable) Lookup22(hash int) string {
@@ -275,6 +277,8 @@ func hashCall(call string, bits int) int {
 	const alphabet = " 0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ/"
 	call = strings.ToUpper(strings.TrimSpace(call))
 	var n uint64
+	// FT8 callsign hashes operate on an 11-character window, padded with
+	// spaces or truncated to match the WSJT-X packing convention.
 	for i := 0; i < 11; i++ {
 		ch := byte(' ')
 		if i < len(call) {

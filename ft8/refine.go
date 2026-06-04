@@ -323,6 +323,7 @@ func costasEvidence(s8 *[8][ft8Symbols]float64) costasEvidenceResult {
 			if win {
 				result.Wins++
 			}
+			ratio = clampCostasRatio(ratio)
 			logRatio := math.Log(ratio)
 			sumLog += logRatio
 			blockLog += logRatio
@@ -340,6 +341,23 @@ func costasEvidence(s8 *[8][ft8Symbols]float64) costasEvidenceResult {
 		result.MinBlock = math.Exp(minBlockLog)
 	}
 	return result
+}
+
+func clampCostasRatio(ratio float64) float64 {
+	const (
+		floor = 1e-9
+		ceil  = 1e9
+	)
+	switch {
+	case math.IsNaN(ratio):
+		return 1
+	case ratio < floor:
+		return floor
+	case ratio > ceil:
+		return ceil
+	default:
+		return ratio
+	}
 }
 
 func costasToneRatio(s8 *[8][ft8Symbols]float64, sym int, targetTone int) (float64, bool) {

@@ -147,7 +147,7 @@ func findCandidates(dd []float32, minFreqHz, maxFreqHz int, syncMin float64, qso
 
 	for i := range pre {
 		for j := 0; j < i; j++ {
-			fdiff := math.Abs(pre[i].FreqHz) - math.Abs(pre[j].FreqHz)
+			fdiff := pre[i].FreqHz - pre[j].FreqHz
 			tdiff := math.Abs(pre[i].DTSec - pre[j].DTSec)
 			if math.Abs(fdiff) < 4.0 && tdiff < 0.04 {
 				if pre[i].Sync >= pre[j].Sync {

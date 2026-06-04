@@ -5,14 +5,9 @@
 
 package ft8
 
-import (
-	"sync"
-
-	"github.com/ColonelBlimp/go-ft8/internal/pfft"
-)
+import "github.com/ColonelBlimp/go-ft8/internal/pfft"
 
 type subtractFFTPlan struct {
-	mu   sync.Mutex
 	plan *pfft.ComplexPlan
 	n    int
 }
@@ -27,10 +22,7 @@ func newSubtractFFTPlan(n int) *subtractFFTPlan {
 
 func (p *subtractFFTPlan) Coefficients(dst, seq []complex128) []complex128 {
 	dst = p.prepare(dst, seq)
-	p.mu.Lock()
-	err := p.plan.Forward(dst)
-	p.mu.Unlock()
-	if err != nil {
+	if err := p.plan.Forward(dst); err != nil {
 		panic(err)
 	}
 	return dst
@@ -38,10 +30,7 @@ func (p *subtractFFTPlan) Coefficients(dst, seq []complex128) []complex128 {
 
 func (p *subtractFFTPlan) Sequence(dst, coeff []complex128) []complex128 {
 	dst = p.prepare(dst, coeff)
-	p.mu.Lock()
-	err := p.plan.Backward(dst)
-	p.mu.Unlock()
-	if err != nil {
+	if err := p.plan.Backward(dst); err != nil {
 		panic(err)
 	}
 	return dst

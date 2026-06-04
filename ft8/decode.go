@@ -309,6 +309,9 @@ func winsorizeLLR(llr *[174]float64, factor float64) {
 	}
 	sort.Float64s(absVals[:n])
 	median := absVals[n/2]
+	if n%2 == 0 {
+		median = (absVals[n/2-1] + absVals[n/2]) / 2
+	}
 	if median <= 0 || math.IsNaN(median) || math.IsInf(median, 0) {
 		return
 	}
@@ -343,7 +346,7 @@ func decodeLLRPass(llr *[174]float64, apmask *[174]int8, apProfileName string, a
 		}
 		return candidateDecode{}, false
 	}
-	if result.HardErrors < 0 || result.HardErrors > 36 {
+	if result.HardErrors < 0 || result.HardErrors > ft8MaxHardErrors {
 		if diagnostics != nil {
 			diagnostics.RejectedHardErrors++
 			diagnostics.recordAPRejectedAfterLDPC(apProfileName, apSource)

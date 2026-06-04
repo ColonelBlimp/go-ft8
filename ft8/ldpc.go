@@ -190,7 +190,7 @@ func softDistance(cw [174]int8, llr *[174]float64) float64 {
 	var d float64
 	for i, bit := range cw {
 		hard := int8(0)
-		if llr[i] >= 0 {
+		if llr[i] > 0 {
 			hard = 1
 		}
 		if hard != bit {

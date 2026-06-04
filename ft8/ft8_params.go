@@ -20,6 +20,7 @@ const (
 	ft8DownsampleFFT2   = ft8DownsampleFFT1 / ft8Downsample
 	ft8DownsampleRate   = wantSampleRate / ft8Downsample
 	ft8RefineSamples    = 2812
+	ft8MaxHardErrors    = 36 // Sanity gate: roughly one fifth of the 174-bit LDPC codeword.
 
 	ft8DefaultMinFreq = 200
 	ft8DefaultMaxFreq = 3200

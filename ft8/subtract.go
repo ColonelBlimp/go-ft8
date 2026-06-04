@@ -15,7 +15,6 @@ const (
 
 var (
 	subtractOnce           sync.Once
-	subtractFFT            = newSubtractFFTPlan(ft8SubtractFFT)
 	subtractFilterSpectrum []complex128
 	subtractEndCorrection  [ft8SubtractFilter/2 + 1]float64
 	subtractPulseOnce      sync.Once
@@ -31,6 +30,11 @@ var (
 				cref: make([]complex128, ft8SignalSamples),
 				dphi: make([]float64, (ft8Symbols+2)*ft8SamplesPerSymbol),
 			}
+		},
+	}
+	subtractFFTPlanPool = sync.Pool{
+		New: func() any {
+			return newSubtractFFTPlan(ft8SubtractFFT)
 		},
 	}
 )
@@ -81,6 +85,9 @@ func subtractFT8(dd []float32, tones [ft8Symbols]int, f0 float64, dtSec float64)
 	if validStart >= validEnd {
 		return
 	}
+	fft := subtractFFTPlanPool.Get().(*subtractFFTPlan)
+	defer subtractFFTPlanPool.Put(fft)
+
 	clear(camp[:validStart])
 	clear(camp[validEnd:])
 	for i := validStart; i < validEnd; i++ {
@@ -89,11 +96,11 @@ func subtractFT8(dd []float32, tones [ft8Symbols]int, f0 float64, dtSec float64)
 		camp[i] = complex(sample*real(ref), -sample*imag(ref))
 	}
 
-	spec := subtractFFT.Coefficients(scratch.spec[:ft8SubtractFFT], camp)
+	spec := fft.Coefficients(scratch.spec[:ft8SubtractFFT], camp)
 	for i := range spec {
 		spec[i] *= subtractFilterSpectrum[i]
 	}
-	cfilt := subtractFFT.Sequence(spec, spec)
+	cfilt := fft.Sequence(spec, spec)
 	for i := 0; i <= ft8SubtractFilter/2; i++ {
 		cfilt[i] *= complex(subtractEndCorrection[i], 0)
 		j := ft8SignalSamples - 1 - i
@@ -110,6 +117,9 @@ func subtractFT8(dd []float32, tones [ft8Symbols]int, f0 float64, dtSec float64)
 }
 
 func initSubtractFilter() {
+	fft := subtractFFTPlanPool.Get().(*subtractFFTPlan)
+	defer subtractFFTPlanPool.Put(fft)
+
 	kernel := make([]complex128, ft8SubtractFFT)
 	window := make([]float64, ft8SubtractFilter+1)
 	var sumw float64
@@ -122,7 +132,7 @@ func initSubtractFilter() {
 		kernel[i] = complex(w/sumw, 0)
 	}
 	kernel = cshift(kernel, ft8SubtractFilter/2+1)
-	subtractFilterSpectrum = subtractFFT.Coefficients(nil, kernel)
+	subtractFilterSpectrum = fft.Coefficients(nil, kernel)
 	scale := 1.0 / float64(ft8SubtractFFT)
 	for i := range subtractFilterSpectrum {
 		subtractFilterSpectrum[i] *= complex(scale, 0)

@@ -271,25 +271,32 @@ func decodeA7Candidate(analysis *candidateAnalysis, hint a7Hint, cache map[strin
 		if !ok {
 			continue
 		}
+		messageDistance := math.Inf(1)
+		messageResult := ldpcResult{}
 		for passIndex := range passes {
 			llr := &passes[passIndex]
 			d := softDistance(cw, llr)
-			if d >= bestDistance {
-				if d < secondDistance {
-					secondDistance = d
-				}
+			if d >= messageDistance {
 				continue
 			}
-			secondDistance = bestDistance
-			bestDistance = d
-			bestText = text
-			bestResult = ldpcResult{
+			messageDistance = d
+			messageResult = ldpcResult{
 				Codeword:   cw,
 				HardErrors: hardErrors(cw, llr),
 				DMin:       d,
 			}
-			copy(bestResult.Message91[:], cw[:91])
+			copy(messageResult.Message91[:], cw[:91])
 		}
+		if messageDistance >= bestDistance {
+			if messageDistance < secondDistance {
+				secondDistance = messageDistance
+			}
+			continue
+		}
+		secondDistance = bestDistance
+		bestDistance = messageDistance
+		bestText = text
+		bestResult = messageResult
 	}
 
 	if bestText == "" || bestDistance > 100 {

@@ -27,12 +27,12 @@ func (p *realFFTPlan) CoefficientsRange(dst []complex128, seq []float64, firstBi
 	return p.coefficientsRange(dst, seq, firstBin, lastBin)
 }
 
-func (p *realFFTPlan) workCoefficients(_ []complex128, seq []float64) []complex128 {
-	return p.fft.Coefficients(p.work, seq)
+func (p *realFFTPlan) workCoefficients(dst []complex128, seq []float64) []complex128 {
+	return p.coefficientsRange(dst, seq, 0, len(p.work)-1)
 }
 
-func (p *realFFTPlan) workCoefficientsRange(_ []complex128, seq []float64, _, _ int) []complex128 {
-	return p.fft.Coefficients(p.work, seq)
+func (p *realFFTPlan) workCoefficientsRange(dst []complex128, seq []float64, firstBin, lastBin int) []complex128 {
+	return p.coefficientsRange(dst, seq, firstBin, lastBin)
 }
 
 func (p *realFFTPlan) coefficientsRange(dst []complex128, seq []float64, firstBin, lastBin int) []complex128 {
