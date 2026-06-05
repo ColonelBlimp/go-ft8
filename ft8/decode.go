@@ -338,7 +338,7 @@ func decodeLLRPass(llr *[174]float64, apmask *[174]int8, apProfileName string, a
 	if options.enableOSD && allowOSD {
 		result, ok = decode17491HybridWithAP(llr, apmask)
 	} else {
-		result, ok, _ = decode17491BP(llr, apmask, 0)
+		result, ok, _ = decode17491BP(llr, apmask, nil)
 	}
 	if !ok {
 		if diagnostics != nil {

@@ -5,7 +5,6 @@ package ft8
 
 import (
 	"math"
-	"sort"
 	"sync"
 )
 
@@ -14,12 +13,65 @@ var (
 	osdGenRows [91][174]int8
 )
 
+const osdRowWords = (174 + 63) / 64
+
+type osdRowBits [osdRowWords]uint64
+
+func osdSetBit(row *osdRowBits, bit int) {
+	row[bit/64] |= 1 << uint(bit%64)
+}
+
+func osdBitSet(row *osdRowBits, bit int) bool {
+	return row[bit/64]&(1<<uint(bit%64)) != 0
+}
+
+func osdBitValue(row *osdRowBits, bit int) int8 {
+	if osdBitSet(row, bit) {
+		return 1
+	}
+	return 0
+}
+
+func osdSwapBits(row *osdRowBits, a int, b int) {
+	abit := osdBitSet(row, a)
+	bbit := osdBitSet(row, b)
+	if abit == bbit {
+		return
+	}
+	row[a/64] ^= 1 << uint(a%64)
+	row[b/64] ^= 1 << uint(b%64)
+}
+
+func sortOSDOrder(order *[174]int, absrx *[174]float64) {
+	for _, gap := range [...]int{132, 57, 23, 10, 4, 1} {
+		for i := gap; i < len(order); i++ {
+			value := order[i]
+			j := i
+			for j >= gap && osdOrderLess(absrx, value, order[j-gap]) {
+				order[j] = order[j-gap]
+				j -= gap
+			}
+			order[j] = value
+		}
+	}
+}
+
+func osdOrderLess(absrx *[174]float64, a int, b int) bool {
+	av := absrx[a]
+	bv := absrx[b]
+	if av == bv {
+		return a < b
+	}
+	return av < bv
+}
+
 func decode17491HybridWithAP(llr *[174]float64, apmask *[174]int8) (ldpcResult, bool) {
-	result, ok, saved := decode17491BP(llr, apmask, 2)
+	var saved [ldpcMaxSavedIterations][174]float64
+	result, ok, savedCount := decode17491BP(llr, apmask, &saved)
 	if ok {
 		return result, true
 	}
-	for i := range saved {
+	for i := 0; i < savedCount; i++ {
 		if osd, ok := osd17491(&saved[i], llr, apmask); ok {
 			return osd, true
 		}
@@ -47,20 +99,17 @@ func osd17491(rx *[174]float64, channel *[174]float64, apmask *[174]int8) (ldpcR
 		absrx[i] = math.Abs(v)
 		order[i] = i
 	}
-	sort.Slice(order[:], func(i, j int) bool {
-		if absrx[order[i]] == absrx[order[j]] {
-			return order[i] < order[j]
-		}
-		return absrx[order[i]] < absrx[order[j]]
-	})
+	sortOSDOrder(&order, &absrx)
 
 	var indices [n]int
-	var genmrb [k][n]int8
+	var genmrb [k]osdRowBits
 	for col := 0; col < n; col++ {
 		orig := order[n-1-col]
 		indices[col] = orig
 		for row := 0; row < k; row++ {
-			genmrb[row][col] = osdGenRows[row][orig]
+			if osdGenRows[row][orig] != 0 {
+				osdSetBit(&genmrb[row], col)
+			}
 		}
 	}
 
@@ -73,7 +122,7 @@ func osd17491(rx *[174]float64, channel *[174]float64, apmask *[174]int8) (ldpcR
 		// Match WSJT-X OSD's bounded pivot search. If the MRB basis cannot be
 		// diagonalized within this window, abandon this OSD attempt.
 		for col := diag; col < limit; col++ {
-			if genmrb[diag][col] == 1 {
+			if osdBitSet(&genmrb[diag], col) {
 				pivot = col
 				break
 			}
@@ -83,24 +132,29 @@ func osd17491(rx *[174]float64, channel *[174]float64, apmask *[174]int8) (ldpcR
 		}
 		if pivot != diag {
 			for row := 0; row < k; row++ {
-				genmrb[row][diag], genmrb[row][pivot] = genmrb[row][pivot], genmrb[row][diag]
+				osdSwapBits(&genmrb[row], diag, pivot)
 			}
 			indices[diag], indices[pivot] = indices[pivot], indices[diag]
 		}
 		for row := 0; row < k; row++ {
-			if row == diag || genmrb[row][diag] == 0 {
+			if row == diag || !osdBitSet(&genmrb[row], diag) {
 				continue
 			}
-			for col := 0; col < n; col++ {
-				genmrb[row][col] ^= genmrb[diag][col]
+			for word := range genmrb[row] {
+				genmrb[row][word] ^= genmrb[diag][word]
 			}
 		}
 	}
 
 	var g2 [n][k]int8
+	var g2Tail [k][n - k]int8
 	for row := 0; row < k; row++ {
 		for col := 0; col < n; col++ {
-			g2[col][row] = genmrb[row][col]
+			value := osdBitValue(&genmrb[row], col)
+			g2[col][row] = value
+			if col >= k {
+				g2Tail[row][col-k] = value
+			}
 		}
 	}
 
@@ -158,12 +212,12 @@ func osd17491(rx *[174]float64, channel *[174]float64, apmask *[174]int8) (ldpcR
 			} else {
 				nd1kpt = 2
 				for i := 0; i < nt; i++ {
-					bit := e2sub[i] ^ g2[k+i][flip]
+					bit := e2sub[i] ^ g2Tail[flip][i]
 					e2[i] = bit
 					nd1kpt += int(bit)
 				}
 				for i := nt; i < n-k; i++ {
-					e2[i] = e2sub[i] ^ g2[k+i][flip]
+					e2[i] = e2sub[i] ^ g2Tail[flip][i]
 				}
 			}
 

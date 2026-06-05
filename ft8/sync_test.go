@@ -648,6 +648,6 @@ func normalizeTruthText(s string) string {
 }
 
 func decode17491BPOnly(llr [174]float64) (ldpcResult, bool) {
-	result, ok, _ := decode17491BP(&llr, &ft8NoAPMask, 0)
+	result, ok, _ := decode17491BP(&llr, &ft8NoAPMask, nil)
 	return result, ok
 }

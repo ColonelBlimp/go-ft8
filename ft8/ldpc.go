@@ -5,6 +5,8 @@ package ft8
 
 import "math"
 
+const ldpcMaxSavedIterations = 2
+
 type ldpcResult struct {
 	Message91  [91]int8
 	Codeword   [174]int8
@@ -13,7 +15,30 @@ type ldpcResult struct {
 	Decoder    int
 }
 
-func decode17491BP(llr *[174]float64, apmask *[174]int8, saveCount int) (ldpcResult, bool, [][174]float64) {
+var ldpcNmBitEdge = initLDPCNmBitEdge()
+
+func initLDPCNmBitEdge() [83][7]int {
+	var out [83][7]int
+	for check := range out {
+		for edge := range out[check] {
+			out[check][edge] = -1
+		}
+	}
+	for bit := 0; bit < 174; bit++ {
+		for bitEdge := 0; bitEdge < 3; bitEdge++ {
+			check := ldpcMn[bit][bitEdge]
+			for edge := 0; edge < ldpcNrw[check]; edge++ {
+				if ldpcNm[check][edge] == bit {
+					out[check][edge] = bitEdge
+					break
+				}
+			}
+		}
+	}
+	return out
+}
+
+func decode17491BP(llr *[174]float64, apmask *[174]int8, saved *[ldpcMaxSavedIterations][174]float64) (ldpcResult, bool, int) {
 	var result ldpcResult
 	var llr32 [174]float32
 	var tov [174][3]float32
@@ -21,10 +46,7 @@ func decode17491BP(llr *[174]float64, apmask *[174]int8, saveCount int) (ldpcRes
 	var tanhTOC [83][7]float32
 	var zn [174]float32
 	var zsum [174]float32
-	var saved [][174]float64
-	if saveCount > 0 {
-		saved = make([][174]float64, 0, saveCount)
-	}
+	savedCount := 0
 	for bit := 0; bit < 174; bit++ {
 		llr32[bit] = float32(llr[bit])
 	}
@@ -47,12 +69,11 @@ func decode17491BP(llr *[174]float64, apmask *[174]int8, saveCount int) (ldpcRes
 			}
 			zsum[bit] += zn[bit]
 		}
-		if iter > 0 && iter <= saveCount {
-			var zs [174]float64
+		if saved != nil && iter > 0 && savedCount < len(saved) {
 			for bit, v := range zsum {
-				zs[bit] = float64(v)
+				saved[savedCount][bit] = float64(v)
 			}
-			saved = append(saved, zs)
+			savedCount++
 		}
 
 		cw, unsatisfied := hardDecisionAndParity(&zn)
@@ -62,7 +83,7 @@ func decode17491BP(llr *[174]float64, apmask *[174]int8, saveCount int) (ldpcRes
 			result.HardErrors = hardErrors(cw, llr)
 			result.DMin = softDistance(cw, llr)
 			result.Decoder = 1
-			return result, true, saved
+			return result, true, savedCount
 		}
 
 		if iter > 0 {
@@ -80,13 +101,7 @@ func decode17491BP(llr *[174]float64, apmask *[174]int8, saveCount int) (ldpcRes
 		for check := 0; check < 83; check++ {
 			for edge := 0; edge < ldpcNrw[check]; edge++ {
 				bit := ldpcNm[check][edge]
-				value := zn[bit]
-				for bitEdge := 0; bitEdge < 3; bitEdge++ {
-					if ldpcMn[bit][bitEdge] == check {
-						value -= tov[bit][bitEdge]
-					}
-				}
-				toc[check][edge] = value
+				toc[check][edge] = zn[bit] - tov[bit][ldpcNmBitEdge[check][edge]]
 			}
 		}
 
@@ -96,21 +111,27 @@ func decode17491BP(llr *[174]float64, apmask *[174]int8, saveCount int) (ldpcRes
 			}
 		}
 
-		for bit := 0; bit < 174; bit++ {
-			for edge := 0; edge < 3; edge++ {
-				check := ldpcMn[bit][edge]
-				product := float32(1.0)
-				for checkEdge := 0; checkEdge < ldpcNrw[check]; checkEdge++ {
-					if ldpcNm[check][checkEdge] != bit {
-						product *= tanhTOC[check][checkEdge]
-					}
+		for check := 0; check < 83; check++ {
+			nrw := ldpcNrw[check]
+			var prefix [7]float32
+			product := float32(1.0)
+			for edge := 0; edge < nrw; edge++ {
+				prefix[edge] = product
+				product *= tanhTOC[check][edge]
+			}
+			for edge := 0; edge < nrw; edge++ {
+				product = prefix[edge]
+				for checkEdge := edge + 1; checkEdge < nrw; checkEdge++ {
+					product *= tanhTOC[check][checkEdge]
 				}
-				tov[bit][edge] = float32(2 * platanh(float64(-product)))
+				bit := ldpcNm[check][edge]
+				bitEdge := ldpcNmBitEdge[check][edge]
+				tov[bit][bitEdge] = float32(2 * platanh(float64(-product)))
 			}
 		}
 	}
 
-	return ldpcResult{}, false, saved
+	return ldpcResult{}, false, savedCount
 }
 
 func hardDecisionAndParity(zn *[174]float32) ([174]int8, int) {
