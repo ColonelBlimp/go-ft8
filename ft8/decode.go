@@ -12,7 +12,10 @@ import (
 // DecodedMessage describes one recovered FT8 message and the signal/decode
 // metrics associated with the candidate that produced it.
 type DecodedMessage struct {
-	Text   string
+	Text string
+	// SNR is the received signal-to-noise estimate in dB, using the
+	// WSJT-X/JT9-style 2500 Hz reference bandwidth.
+	SNR    int
 	FreqHz float64
 	DTSec  float64
 	// Sync is the normalized coarse sync-search score used by SyncMin.
@@ -24,6 +27,19 @@ type DecodedMessage struct {
 	Blocks         int
 	HardErrors     int
 	DMin           float64
+}
+
+// SignalReport returns SNR formatted as an FT8 signal report, for example
+// "-13" or "+04".
+func (m DecodedMessage) SignalReport() string {
+	snr := m.SNR
+	if snr < -50 {
+		snr = -50
+	}
+	if snr > 49 {
+		snr = 49
+	}
+	return formatReport(snr)
 }
 
 // DecodeMessages decodes one 15-second FT8 slot from 12 kHz mono signed-16-bit
@@ -95,6 +111,7 @@ func decodeMessagesCoreWithDiagnostics(iwave []int16, a7Hints []a7Hint, hashes *
 				}
 				msg := DecodedMessage{
 					Text:           decoded.Text,
+					SNR:            estimateSNR(tonesFromCodeword(decoded.Result.Codeword), analysis.SymbolPower, analysis.candidate.BaselineNoise),
 					FreqHz:         analysis.Refined.FreqHz,
 					DTSec:          analysis.Refined.DTSec - 0.5,
 					Sync:           analysis.candidate.Sync,
@@ -132,7 +149,7 @@ func decodeMessagesCoreWithDiagnostics(iwave []int16, a7Hints []a7Hint, hashes *
 		}
 	}
 	if len(a7Hints) > 0 && fullDD != nil {
-		a7Decoded := decodeA7Hints(fullDD, a7Hints, seen)
+		a7Decoded := decodeA7Hints(fullDD, a7Hints, seen, options.minFreqHz, options.maxFreqHz)
 		if diagnostics != nil {
 			diagnostics.A7Decoded = len(a7Decoded)
 		}
@@ -157,6 +174,7 @@ func decodeCandidateVariantsForMetricSet(dd []float32, ds *downsampler, cand can
 		candidate: cand,
 		Refined:   refineCandidateDetails(dd, ds, cand, recompute),
 	}
+	analysis.SymbolPower = ds.symbolPower
 	if analysis.Refined.HardSync <= options.hardSyncMin {
 		if diagnostics != nil {
 			diagnostics.RejectedHardSync++

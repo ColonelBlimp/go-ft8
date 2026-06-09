@@ -50,10 +50,14 @@ func main() {
 
 	messages := ft8.DecodeMessages(pcm)
 	for _, msg := range messages {
-		fmt.Printf("%7.1f Hz %+5.2f s  %s\n", msg.FreqHz, msg.DTSec, msg.Text)
+		fmt.Printf("%3d dB %7.1f Hz %+5.2f s  %s\n", msg.SNR, msg.FreqHz, msg.DTSec, msg.Text)
 	}
 }
 ```
+
+`DecodedMessage.SNR` is the received SNR estimate in dB using the WSJT-X/JT9
+2500 Hz reference bandwidth. Use `msg.SignalReport()` when constructing a reply
+that needs an encodable FT8 signal report such as `-13` or `+04`.
 
 For a receiver stream, keep one decoder instance per stream so hash and A7
 history can carry across adjacent slots:

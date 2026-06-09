@@ -22,6 +22,7 @@ type candidateAnalysis struct {
 	Refined      refinedCandidate
 	Metrics      softMetrics
 	PowerMetrics softMetrics
+	SymbolPower  [8][ft8Symbols]float64
 }
 
 func analyzeCandidateWithDownsampler(dd []float32, ds *downsampler, cand candidate, recompute bool) candidateAnalysis {
@@ -31,8 +32,9 @@ func analyzeCandidateWithDownsampler(dd []float32, ds *downsampler, cand candida
 func analyzeCandidateWithDownsamplerForMetricSet(dd []float32, ds *downsampler, cand candidate, recompute bool, metricSet int) candidateAnalysis {
 	refined := refineCandidateDetails(dd, ds, cand, recompute)
 	analysis := candidateAnalysis{
-		candidate: cand,
-		Refined:   refined,
+		candidate:   cand,
+		Refined:     refined,
+		SymbolPower: ds.symbolPower,
 	}
 	computeCandidateAnalysisMetrics(&analysis, ds, metricSet)
 	return analysis

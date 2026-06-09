@@ -271,26 +271,13 @@ func (d *downsampler) symbolSpectra(cd0 []complex128, start int) {
 					z += cd0[i1+i] * wave[i]
 				}
 				d.cs[tone][sym] = z / 1000
-				if ft8CostasSymbolMask[sym] {
-					d.symbolPower[tone][sym] = cmplxAbs(z)
-				}
+				d.symbolPower[tone][sym] = cmplxAbs(z)
 			}
 		}
 	}
 }
 
-var ft8CostasSymbolMask = makeCostasSymbolMask()
 var symbolToneWaveforms = makeSymbolToneWaveforms()
-
-func makeCostasSymbolMask() [ft8Symbols]bool {
-	var out [ft8Symbols]bool
-	for k := 0; k < 7; k++ {
-		out[k] = true
-		out[k+36] = true
-		out[k+72] = true
-	}
-	return out
-}
 
 func makeSymbolToneWaveforms() [8][32]complex128 {
 	var out [8][32]complex128

@@ -9,9 +9,10 @@ import (
 )
 
 type candidate struct {
-	FreqHz float64
-	DTSec  float64
-	Sync   float64
+	FreqHz        float64
+	DTSec         float64
+	Sync          float64
+	BaselineNoise float64
 }
 
 func findCandidates(dd []float32, minFreqHz, maxFreqHz int, syncMin float64, qsoFreqHz int, maxCandidates int) []candidate {
@@ -118,6 +119,7 @@ func findCandidates(dd []float32, minFreqHz, maxFreqHz int, syncMin float64, qso
 	if baseWide <= 0 || math.IsNaN(baseWide) {
 		baseWide = 1
 	}
+	sbase := spectrumBaseline(dd, minFreqHz, maxFreqHz)
 	for i := firstBin; i <= lastBin; i++ {
 		red[i] /= base
 		redWide[i] /= baseWide
@@ -128,9 +130,10 @@ func findCandidates(dd []float32, minFreqHz, maxFreqHz int, syncMin float64, qso
 		bin := redOrder[idx]
 		if red[bin] >= syncMin && !math.IsNaN(red[bin]) {
 			pre = append(pre, candidate{
-				FreqHz: float64(bin) * df,
-				DTSec:  (float64(jpeak[bin]) - 0.5) * tstep,
-				Sync:   red[bin],
+				FreqHz:        float64(bin) * df,
+				DTSec:         (float64(jpeak[bin]) - 0.5) * tstep,
+				Sync:          red[bin],
+				BaselineNoise: baselineNoise(sbase, bin),
 			})
 		}
 		if jpeakWide[bin] == jpeak[bin] || len(pre) >= maxPreCand {
@@ -138,9 +141,10 @@ func findCandidates(dd []float32, minFreqHz, maxFreqHz int, syncMin float64, qso
 		}
 		if redWide[bin] >= syncMin && !math.IsNaN(redWide[bin]) {
 			pre = append(pre, candidate{
-				FreqHz: float64(bin) * df,
-				DTSec:  (float64(jpeakWide[bin]) - 0.5) * tstep,
-				Sync:   redWide[bin],
+				FreqHz:        float64(bin) * df,
+				DTSec:         (float64(jpeakWide[bin]) - 0.5) * tstep,
+				Sync:          redWide[bin],
+				BaselineNoise: baselineNoise(sbase, bin),
 			})
 		}
 	}

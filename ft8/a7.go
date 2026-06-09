@@ -211,7 +211,7 @@ func isDirectedCQToken(s string) bool {
 	return len(s) >= 1 && len(s) <= 4 && allLetters(s)
 }
 
-func decodeA7Hints(dd []float32, hints []a7Hint, seen map[string]bool) []DecodedMessage {
+func decodeA7Hints(dd []float32, hints []a7Hint, seen map[string]bool, minFreqHz int, maxFreqHz int) []DecodedMessage {
 	if len(hints) == 0 {
 		return nil
 	}
@@ -219,8 +219,13 @@ func decodeA7Hints(dd []float32, hints []a7Hint, seen map[string]bool) []Decoded
 	cache := make(map[string][174]int8)
 	out := make([]DecodedMessage, 0)
 	recompute := true
+	sbase := spectrumBaseline(dd, minFreqHz, maxFreqHz)
 	for _, hint := range hints {
-		cand := candidate{FreqHz: hint.FreqHz, DTSec: hint.DTSec}
+		cand := candidate{
+			FreqHz:        hint.FreqHz,
+			DTSec:         hint.DTSec,
+			BaselineNoise: baselineNoiseAtFreq(sbase, hint.FreqHz),
+		}
 		analysis := analyzeCandidateWithDownsampler(dd, ds, cand, recompute)
 		recompute = false
 		decoded, ok := decodeA7Candidate(&analysis, hint, cache)
@@ -230,6 +235,7 @@ func decodeA7Hints(dd []float32, hints []a7Hint, seen map[string]bool) []Decoded
 		seen[decoded.Text] = true
 		out = append(out, DecodedMessage{
 			Text:           decoded.Text,
+			SNR:            estimateSNR(tonesFromCodeword(decoded.Result.Codeword), analysis.SymbolPower, analysis.candidate.BaselineNoise),
 			FreqHz:         analysis.Refined.FreqHz,
 			DTSec:          analysis.Refined.DTSec - 0.5,
 			Sync:           analysis.candidate.Sync,

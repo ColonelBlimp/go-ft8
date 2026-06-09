@@ -486,7 +486,7 @@ func TestDiagnosticA7History(t *testing.T) {
 		}
 		hints := collectA7Hints(prevMessages)
 		samples := loadCorpusWAV(t, next.WAV)
-		decoded := decodeA7Hints(decodeBlocks(samples, 50), hints, make(map[string]bool))
+		decoded := decodeA7Hints(decodeBlocks(samples, 50), hints, make(map[string]bool), ft8DefaultMinFreq, ft8DefaultMaxFreq)
 		want := make(map[string]bool)
 		for _, sig := range next.Signals {
 			want[normalizeTruthText(sig.Text)] = true
