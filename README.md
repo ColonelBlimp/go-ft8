@@ -249,9 +249,9 @@ builds where CGO or vendored C is not acceptable.
 
 ## Benchmarks
 
-Reference decode wall-clock benchmarks on an Intel Core i3-10100F, Linux
-amd64, Go 1.26.3, using the production PocketFFT backend and the six bundled
-WAV fixtures:
+Reference decode wall-clock benchmarks for version 0.3.0, measured 2026-06-10
+on an Intel Core i3-10100F, Linux amd64, Go 1.26.4-X:nodwarf5, using the
+production PocketFFT backend and the six bundled WAV fixtures:
 
 ```sh
 GOCACHE=/tmp/go-build go test -tags pocketfft ./ft8 -run=^$ \
@@ -261,11 +261,29 @@ GOCACHE=/tmp/go-build go test -tags pocketfft ./ft8 -run=^$ \
 
 | Benchmark | Mean per 15s slot | Observed fixture range |
 | --------- | ----------------- | ---------------------- |
-| Strict `DecodeMessages` | 0.592 s | 0.553-0.660 s |
-| Deep without broad AP | 3.80 s | 3.18-4.31 s |
-| Deep `DecodeMessagesWithOptions(DeepDecoderOptions())` | 5.04 s | 4.19-5.87 s |
-| Deep with 200 AP call hints | 5.16 s | 4.18-6.08 s |
-| Structured strict+deep `DecodeStructured(...IncludeDeep)` | 5.70 s | 4.77-6.58 s |
+| Strict `DecodeMessages` | 0.586 s | 0.540-0.678 s |
+| Deep without broad AP | 3.20 s | 2.71-3.73 s |
+| Deep `DecodeMessagesWithOptions(DeepDecoderOptions())` | 4.05 s | 3.39-4.70 s |
+| Deep with 200 AP call hints | 4.08 s | 3.47-4.70 s |
+| Structured strict+deep `DecodeStructured(...IncludeDeep)` | 4.56 s | 3.95-5.20 s |
+
+The profiling refresh used the same benchmark set with CPU and memory profiles:
+
+```sh
+GOCACHE=/tmp/go-build go test -tags pocketfft ./ft8 -run=^$ \
+  -bench='BenchmarkDecode(Messages|Structured).*PerFixture' \
+  -benchmem -benchtime=1x -count=1 \
+  -cpuprofile=/tmp/go-ft8-cpu.prof -memprofile=/tmp/go-ft8-mem.prof
+```
+
+CPU samples were concentrated in PocketFFT CGO calls and LDPC/OSD decoding:
+`runtime.cgocall` 24.9% flat, `osd17491` 19.9%, `math.archExp` 10.6%,
+`decode17491BP` 8.3%, `math.tanh` 5.8%, `math.Sincos` 5.4%, and
+`subtractFT8` 3.9% flat / 34.7% cumulative. Allocation samples were dominated
+by startup tables and decode scratch space: `init.func5` 39.0% alloc_space,
+`newFT8SpectraScratch` 24.9%, `(*ft8SpectraScratch).ensureFinder` 12.8%,
+`(*downsampler).downsample` 6.3%, `newRealFFTPlan` 6.1%, and
+`(*realFFTPlan).coefficientsRange` 5.7%.
 
 These numbers are local reference measurements, not performance guarantees.
 Wall time varies with CPU, CGO toolchain, OS scheduling, fixture content, and
@@ -307,6 +325,7 @@ leading `v`. Common version tasks:
 task version:get
 task version:set -- 0.1.0
 task version:bump:patch
+task version:bump:minor
 task version:tag
 task version:push-tag
 ```
