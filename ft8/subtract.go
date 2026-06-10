@@ -26,7 +26,6 @@ var (
 		New: func() any {
 			return &subtractScratch{
 				camp: make([]complex128, ft8SubtractFFT),
-				spec: make([]complex128, ft8SubtractFFT),
 				cref: make([]complex128, ft8SignalSamples),
 				dphi: make([]float64, (ft8Symbols+2)*ft8SamplesPerSymbol),
 			}
@@ -41,7 +40,6 @@ var (
 
 type subtractScratch struct {
 	camp []complex128
-	spec []complex128
 	cref []complex128
 	dphi []float64
 }
@@ -96,7 +94,11 @@ func subtractFT8(dd []float32, tones [ft8Symbols]int, f0 float64, dtSec float64)
 		camp[i] = complex(sample*real(ref), -sample*imag(ref))
 	}
 
-	spec := fft.Coefficients(scratch.spec[:ft8SubtractFFT], camp)
+	// Forward transform in place on camp; camp is not read again after
+	// this point, so we transform it directly instead of copying into a
+	// separate spectrum buffer (saves a 180000-element complex128
+	// memmove and one scratch allocation per subtraction).
+	spec := fft.Coefficients(camp, camp)
 	for i := range spec {
 		spec[i] *= subtractFilterSpectrum[i]
 	}
