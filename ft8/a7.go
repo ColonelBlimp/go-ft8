@@ -215,11 +215,17 @@ func decodeA7Hints(dd []float32, hints []a7Hint, seen map[string]bool, minFreqHz
 	if len(hints) == 0 {
 		return nil
 	}
+	return decodeA7HintsWithBaseline(dd, hints, seen, minFreqHz, maxFreqHz, spectrumBaseline(dd, minFreqHz, maxFreqHz))
+}
+
+func decodeA7HintsWithBaseline(dd []float32, hints []a7Hint, seen map[string]bool, minFreqHz int, maxFreqHz int, sbase []float64) []DecodedMessage {
+	if len(hints) == 0 {
+		return nil
+	}
 	ds := newDownsampler()
 	cache := make(map[string][174]int8)
 	out := make([]DecodedMessage, 0)
 	recompute := true
-	sbase := spectrumBaseline(dd, minFreqHz, maxFreqHz)
 	for _, hint := range hints {
 		cand := candidate{
 			FreqHz:        hint.FreqHz,

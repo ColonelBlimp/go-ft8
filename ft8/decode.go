@@ -73,6 +73,7 @@ func decodeMessagesCoreWithDiagnostics(iwave []int16, a7Hints []a7Hint, hashes *
 	seen := make(map[string]bool)
 	var out []DecodedMessage
 	var fullDD []float32
+	var fullBaseline []float64
 	if diagnostics != nil {
 		diagnostics.A7Hints = len(a7Hints)
 	}
@@ -82,15 +83,17 @@ func decodeMessagesCoreWithDiagnostics(iwave []int16, a7Hints []a7Hint, hashes *
 			diagnostics.BlocksSearched = append(diagnostics.BlocksSearched, blocks)
 		}
 		dd := decodeBlocks(iwave, blocks)
+		sbase := spectrumBaseline(dd, options.minFreqHz, options.maxFreqHz)
 		keepDD := false
 		if blocks == 50 && len(a7Hints) > 0 {
 			// Keep the full-slot buffer after subtraction; A7 hints use the
 			// residual so strong decoded signals do not mask weak follow-ups.
 			fullDD = dd
+			fullBaseline = sbase
 			keepDD = true
 		}
 		for pass := 0; pass < 2; pass++ {
-			candidates := findCandidates(dd, options.minFreqHz, options.maxFreqHz, options.syncMin, 0, options.maxCandidates)
+			candidates := findCandidatesWithBaseline(dd, options.minFreqHz, options.maxFreqHz, options.syncMin, 0, options.maxCandidates, sbase)
 			if diagnostics != nil {
 				diagnostics.CandidateSearches++
 				diagnostics.CandidatesFound += len(candidates)
@@ -149,7 +152,7 @@ func decodeMessagesCoreWithDiagnostics(iwave []int16, a7Hints []a7Hint, hashes *
 		}
 	}
 	if len(a7Hints) > 0 && fullDD != nil {
-		a7Decoded := decodeA7Hints(fullDD, a7Hints, seen, options.minFreqHz, options.maxFreqHz)
+		a7Decoded := decodeA7HintsWithBaseline(fullDD, a7Hints, seen, options.minFreqHz, options.maxFreqHz, fullBaseline)
 		if diagnostics != nil {
 			diagnostics.A7Decoded = len(a7Decoded)
 		}

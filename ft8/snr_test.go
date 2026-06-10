@@ -57,3 +57,18 @@ func TestSignalReportClampsToEncodableRange(t *testing.T) {
 		}
 	}
 }
+
+func TestEstimateSNRFallbackUsesOppositeEightToneBin(t *testing.T) {
+	var tones [ft8Symbols]int
+	var symbolPower [8][ft8Symbols]float64
+	for sym := range tones {
+		tones[sym] = 7
+		symbolPower[7][sym] = 20
+		symbolPower[3][sym] = 1
+		symbolPower[4][sym] = 10
+	}
+
+	if got := estimateSNR(tones, symbolPower, 0); got != -1 {
+		t.Fatalf("estimateSNR fallback got %d, want -1", got)
+	}
+}

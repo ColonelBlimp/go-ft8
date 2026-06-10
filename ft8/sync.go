@@ -16,6 +16,10 @@ type candidate struct {
 }
 
 func findCandidates(dd []float32, minFreqHz, maxFreqHz int, syncMin float64, qsoFreqHz int, maxCandidates int) []candidate {
+	return findCandidatesWithBaseline(dd, minFreqHz, maxFreqHz, syncMin, qsoFreqHz, maxCandidates, spectrumBaseline(dd, minFreqHz, maxFreqHz))
+}
+
+func findCandidatesWithBaseline(dd []float32, minFreqHz, maxFreqHz int, syncMin float64, qsoFreqHz int, maxCandidates int, sbase []float64) []candidate {
 	const (
 		maxPreCand = 1000
 		maxLag     = 62
@@ -119,7 +123,6 @@ func findCandidates(dd []float32, minFreqHz, maxFreqHz int, syncMin float64, qso
 	if baseWide <= 0 || math.IsNaN(baseWide) {
 		baseWide = 1
 	}
-	sbase := spectrumBaseline(dd, minFreqHz, maxFreqHz)
 	for i := firstBin; i <= lastBin; i++ {
 		red[i] /= base
 		redWide[i] /= baseWide

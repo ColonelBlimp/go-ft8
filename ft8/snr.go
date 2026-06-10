@@ -42,7 +42,7 @@ func estimateSNR(tones [ft8Symbols]int, symbolPower [8][ft8Symbols]float64, base
 			continue
 		}
 		sig := symbolPower[tone][sym]
-		noiseTone := (tone + 4) % 7
+		noiseTone := (tone + 4) % 8
 		noise := symbolPower[noiseTone][sym]
 		xsig += sig * sig
 		xnoi += noise * noise
