@@ -215,10 +215,11 @@ func decodeA7Hints(dd []float32, hints []a7Hint, seen map[string]bool, minFreqHz
 	if len(hints) == 0 {
 		return nil
 	}
-	return decodeA7HintsWithBaseline(dd, hints, seen, minFreqHz, maxFreqHz, spectrumBaseline(dd, minFreqHz, maxFreqHz))
+	baseline := lazySpectrumBaseline{dd: dd, minFreqHz: minFreqHz, maxFreqHz: maxFreqHz}
+	return decodeA7HintsWithBaseline(dd, hints, seen, &baseline)
 }
 
-func decodeA7HintsWithBaseline(dd []float32, hints []a7Hint, seen map[string]bool, minFreqHz int, maxFreqHz int, sbase []float64) []DecodedMessage {
+func decodeA7HintsWithBaseline(dd []float32, hints []a7Hint, seen map[string]bool, baseline *lazySpectrumBaseline) []DecodedMessage {
 	if len(hints) == 0 {
 		return nil
 	}
@@ -228,9 +229,8 @@ func decodeA7HintsWithBaseline(dd []float32, hints []a7Hint, seen map[string]boo
 	recompute := true
 	for _, hint := range hints {
 		cand := candidate{
-			FreqHz:        hint.FreqHz,
-			DTSec:         hint.DTSec,
-			BaselineNoise: baselineNoiseAtFreq(sbase, hint.FreqHz),
+			FreqHz: hint.FreqHz,
+			DTSec:  hint.DTSec,
 		}
 		analysis := analyzeCandidateWithDownsampler(dd, ds, cand, recompute)
 		recompute = false
@@ -241,7 +241,7 @@ func decodeA7HintsWithBaseline(dd []float32, hints []a7Hint, seen map[string]boo
 		seen[decoded.Text] = true
 		out = append(out, DecodedMessage{
 			Text:           decoded.Text,
-			SNR:            estimateSNR(tonesFromCodeword(decoded.Result.Codeword), analysis.SymbolPower, analysis.candidate.BaselineNoise),
+			SNR:            estimateSNR(tonesFromCodeword(decoded.Result.Codeword), analysis.SymbolPower, baseline.noiseAtFreq(hint.FreqHz)),
 			FreqHz:         analysis.Refined.FreqHz,
 			DTSec:          analysis.Refined.DTSec - 0.5,
 			Sync:           analysis.candidate.Sync,

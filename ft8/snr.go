@@ -34,6 +34,27 @@ type snrScratch struct {
 	coeff []complex128
 }
 
+// lazySpectrumBaseline defers baseline FFT work until a decoded message needs SNR.
+type lazySpectrumBaseline struct {
+	dd        []float32
+	minFreqHz int
+	maxFreqHz int
+	sbase     []float64
+	computed  bool
+}
+
+func (b *lazySpectrumBaseline) noiseAtFreq(freqHz float64) float64 {
+	b.ensure()
+	return baselineNoiseAtFreq(b.sbase, freqHz)
+}
+
+func (b *lazySpectrumBaseline) ensure() {
+	if !b.computed {
+		b.sbase = spectrumBaseline(b.dd, b.minFreqHz, b.maxFreqHz)
+		b.computed = true
+	}
+}
+
 func estimateSNR(tones [ft8Symbols]int, symbolPower [8][ft8Symbols]float64, baseNoise float64) int {
 	xsig := 0.0
 	xnoi := 0.0

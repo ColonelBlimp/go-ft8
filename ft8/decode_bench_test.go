@@ -29,6 +29,21 @@ func BenchmarkDecodeMessagesDeepAPCallHintsPerFixture(b *testing.B) {
 	benchmarkDecodeMessagesPerFixture(b, options)
 }
 
+func BenchmarkDecodeMessagesSilence(b *testing.B) {
+	samples := make([]int16, ft8FrameSamples)
+	for i := 0; i < b.N; i++ {
+		_ = DecodeMessages(samples)
+	}
+}
+
+func BenchmarkDecodeMessagesDeepSilence(b *testing.B) {
+	samples := make([]int16, ft8FrameSamples)
+	options := DeepDecoderOptions()
+	for i := 0; i < b.N; i++ {
+		_ = DecodeMessagesWithOptions(samples, options)
+	}
+}
+
 func BenchmarkDecodeStructuredDeepPerFixture(b *testing.B) {
 	matches := corpusWAVFiles(b)
 	options := StructuredDecodeOptions{IncludeDeep: true}

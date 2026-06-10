@@ -73,7 +73,7 @@ func decodeMessagesCoreWithDiagnostics(iwave []int16, a7Hints []a7Hint, hashes *
 	seen := make(map[string]bool)
 	var out []DecodedMessage
 	var fullDD []float32
-	var fullBaseline []float64
+	var fullBaseline *lazySpectrumBaseline
 	if diagnostics != nil {
 		diagnostics.A7Hints = len(a7Hints)
 	}
@@ -83,17 +83,17 @@ func decodeMessagesCoreWithDiagnostics(iwave []int16, a7Hints []a7Hint, hashes *
 			diagnostics.BlocksSearched = append(diagnostics.BlocksSearched, blocks)
 		}
 		dd := decodeBlocks(iwave, blocks)
-		sbase := spectrumBaseline(dd, options.minFreqHz, options.maxFreqHz)
+		baseline := lazySpectrumBaseline{dd: dd, minFreqHz: options.minFreqHz, maxFreqHz: options.maxFreqHz}
 		keepDD := false
 		if blocks == 50 && len(a7Hints) > 0 {
 			// Keep the full-slot buffer after subtraction; A7 hints use the
 			// residual so strong decoded signals do not mask weak follow-ups.
 			fullDD = dd
-			fullBaseline = sbase
+			fullBaseline = &baseline
 			keepDD = true
 		}
 		for pass := 0; pass < 2; pass++ {
-			candidates := findCandidatesWithBaseline(dd, options.minFreqHz, options.maxFreqHz, options.syncMin, 0, options.maxCandidates, sbase)
+			candidates := findCandidates(dd, options.minFreqHz, options.maxFreqHz, options.syncMin, 0, options.maxCandidates)
 			if diagnostics != nil {
 				diagnostics.CandidateSearches++
 				diagnostics.CandidatesFound += len(candidates)
@@ -114,7 +114,6 @@ func decodeMessagesCoreWithDiagnostics(iwave []int16, a7Hints []a7Hint, hashes *
 				}
 				msg := DecodedMessage{
 					Text:           decoded.Text,
-					SNR:            estimateSNR(tonesFromCodeword(decoded.Result.Codeword), analysis.SymbolPower, analysis.candidate.BaselineNoise),
 					FreqHz:         analysis.Refined.FreqHz,
 					DTSec:          analysis.Refined.DTSec - 0.5,
 					Sync:           analysis.candidate.Sync,
@@ -134,11 +133,16 @@ func decodeMessagesCoreWithDiagnostics(iwave []int16, a7Hints []a7Hint, hashes *
 					continue
 				}
 				seen[decoded.Text] = true
+				msg.SNR = estimateSNR(tonesFromCodeword(decoded.Result.Codeword), analysis.SymbolPower, baseline.noiseAtFreq(analysis.candidate.FreqHz))
 				out = append(out, msg)
 			}
 			putDownsampler(ds)
 			if len(subtract) == 0 {
 				break
+			}
+			if pass == 0 {
+				// Preserve the pre-subtraction baseline for later-pass and A7 SNR.
+				baseline.ensure()
 			}
 			if diagnostics != nil {
 				diagnostics.Subtractions += len(subtract)
@@ -152,7 +156,7 @@ func decodeMessagesCoreWithDiagnostics(iwave []int16, a7Hints []a7Hint, hashes *
 		}
 	}
 	if len(a7Hints) > 0 && fullDD != nil {
-		a7Decoded := decodeA7HintsWithBaseline(fullDD, a7Hints, seen, options.minFreqHz, options.maxFreqHz, fullBaseline)
+		a7Decoded := decodeA7HintsWithBaseline(fullDD, a7Hints, seen, fullBaseline)
 		if diagnostics != nil {
 			diagnostics.A7Decoded = len(a7Decoded)
 		}
