@@ -9,8 +9,13 @@ import (
 )
 
 const (
-	ft8SubtractFFT    = ft8FrameSamples
 	ft8SubtractFilter = 4000
+	ft8SubtractMinFFT = ft8SignalSamples + ft8SubtractFilter/2 + 1
+
+	// Smooth FFT length above ft8SubtractMinFFT.
+	ft8SubtractFFT = 155520
+
+	_ = uint(ft8SubtractFFT - ft8SubtractMinFFT)
 )
 
 var (

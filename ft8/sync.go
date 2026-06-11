@@ -35,6 +35,9 @@ func findCandidates(dd []float32, minFreqHz, maxFreqHz int, syncMin float64, qso
 	if firstBin > lastBin {
 		return nil
 	}
+	if !hasNonZeroSample(dd) {
+		return nil
+	}
 	toneLastBin := lastBin + freqOversample*6
 
 	scratch := ft8SpectraScratchPool.Get().(*ft8SpectraScratch)
@@ -213,6 +216,15 @@ func syncRatio(signal, allTones float64) float64 {
 		return 0
 	}
 	return signal / noise
+}
+
+func hasNonZeroSample(samples []float32) bool {
+	for _, sample := range samples {
+		if sample != 0 {
+			return true
+		}
+	}
+	return false
 }
 
 func sortedBinOrder(order []int, values []float64, first, last int) []int {
