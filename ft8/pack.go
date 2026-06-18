@@ -11,7 +11,7 @@ import (
 func pack77StandardMessage(msg string) ([77]int8, bool) {
 	fields := strings.Fields(strings.ToUpper(msg))
 	if len(fields) >= 3 && fields[0] == "CQ" {
-		if _, ok := pack28(fields[2]); ok {
+		if _, _, ok := pack28WithPortable(fields[2]); ok {
 			normalized := make([]string, 0, len(fields)-1)
 			normalized = append(normalized, "CQ_"+fields[1], fields[2])
 			normalized = append(normalized, fields[3:]...)
@@ -23,13 +23,17 @@ func pack77StandardMessage(msg string) ([77]int8, bool) {
 		return out, false
 	}
 
-	n28a, ok := pack28(fields[0])
+	n28a, ipa, ok := pack28WithPortable(fields[0])
 	if !ok {
 		return out, false
 	}
-	n28b, ok := pack28(fields[1])
+	n28b, ipb, ok := pack28WithPortable(fields[1])
 	if !ok {
 		return out, false
+	}
+	i3 := 1
+	if ipa != 0 || ipb != 0 {
+		i3 = 2
 	}
 
 	ir := 0
@@ -59,13 +63,30 @@ func pack77StandardMessage(msg string) ([77]int8, bool) {
 	}
 
 	writeBits(out[:], 0, 28, n28a)
-	writeBits(out[:], 28, 1, 0)
+	writeBits(out[:], 28, 1, ipa)
 	writeBits(out[:], 29, 28, n28b)
-	writeBits(out[:], 57, 1, 0)
+	writeBits(out[:], 57, 1, ipb)
 	writeBits(out[:], 58, 1, ir)
 	writeBits(out[:], 59, 15, igrid4)
-	writeBits(out[:], 74, 3, 1)
+	writeBits(out[:], 74, 3, i3)
 	return out, true
+}
+
+func pack28WithPortable(call string) (int, int, bool) {
+	call = strings.TrimSpace(strings.ToUpper(call))
+	portable := 0
+	if strings.HasSuffix(call, "/P") {
+		portable = 1
+		call = strings.TrimSuffix(call, "/P")
+		if !callOK(call) {
+			return 0, 0, false
+		}
+	}
+	n28, ok := pack28(call)
+	if !ok {
+		return 0, 0, false
+	}
+	return n28, portable, true
 }
 
 func pack28(call string) (int, bool) {

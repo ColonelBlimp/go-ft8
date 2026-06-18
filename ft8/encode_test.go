@@ -21,6 +21,11 @@ func TestEncodeStandardMessageRoundTrips(t *testing.T) {
 		{name: "responseReport", in: "G5MJF YM4KF R-11", want: "G5MJF YM4KF R-11"},
 		{name: "directedCQ", in: "CQ DX S56GD JN65", want: "CQ DX S56GD JN65"},
 		{name: "extraWhitespace", in: "  cq   dx   s56gd   jn65  ", want: "CQ DX S56GD JN65"},
+		{name: "portableFirstCall", in: "G4ABC/P PA9XYZ JO22", want: "G4ABC/P PA9XYZ JO22"},
+		{name: "portableSecondCall", in: "PA9XYZ G4ABC/P RR73", want: "PA9XYZ G4ABC/P RR73"},
+		{name: "portableBothCalls", in: "PA3XYZ/P GM4ABC/P R JO22", want: "PA3XYZ/P GM4ABC/P R JO22"},
+		{name: "portableCQ", in: "CQ G4ABC/P IO91", want: "CQ G4ABC/P IO91"},
+		{name: "portableDirectedCQ", in: "cq test g4abc/p io91", want: "CQ TEST G4ABC/P IO91"},
 	}
 
 	for _, test := range tests {
@@ -78,6 +83,9 @@ func TestEncodeStandardMessageRejectsUnsupportedMessages(t *testing.T) {
 		"THIS IS FREE TEXT",
 		"CQ <K1ABC> FN42",
 		"K1ABC W9XYZ -99",
+		"CQ TEST/P G4ABC IO91",
+		"G4ABC PA9XYZ/P/P JO22",
+		"G4ABC PA9XYZ JO22/P",
 	}
 	for _, test := range tests {
 		t.Run(test, func(t *testing.T) {

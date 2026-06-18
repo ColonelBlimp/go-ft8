@@ -13,6 +13,11 @@ func TestPackEncodeRoundTripsStandardMessages(t *testing.T) {
 		"PA2JFX SV3CNX 73",
 		"G5MJF YM4KF R-11",
 		"CQ DX S56GD JN65",
+		"G4ABC/P PA9XYZ JO22",
+		"PA9XYZ G4ABC/P RR73",
+		"PA3XYZ/P GM4ABC/P R JO22",
+		"CQ G4ABC/P IO91",
+		"CQ TEST G4ABC/P IO91",
 	}
 
 	for _, test := range tests {
@@ -31,6 +36,40 @@ func TestPackEncodeRoundTripsStandardMessages(t *testing.T) {
 			}
 			if got != test {
 				t.Fatalf("round trip got %q, want %q", got, test)
+			}
+		})
+	}
+}
+
+func TestPackStandardMessagePortableBits(t *testing.T) {
+	tests := []struct {
+		text string
+		ipa  int
+		ipb  int
+		i3   int
+	}{
+		{text: "G4ABC PA9XYZ JO22", ipa: 0, ipb: 0, i3: 1},
+		{text: "G4ABC/P PA9XYZ JO22", ipa: 1, ipb: 0, i3: 2},
+		{text: "PA9XYZ G4ABC/P RR73", ipa: 0, ipb: 1, i3: 2},
+		{text: "PA3XYZ/P GM4ABC/P R JO22", ipa: 1, ipb: 1, i3: 2},
+		{text: "CQ G4ABC/P IO91", ipa: 0, ipb: 1, i3: 2},
+		{text: "CQ TEST G4ABC/P IO91", ipa: 0, ipb: 1, i3: 2},
+	}
+
+	for _, test := range tests {
+		t.Run(test.text, func(t *testing.T) {
+			bits, ok := pack77StandardMessage(test.text)
+			if !ok {
+				t.Fatalf("pack failed")
+			}
+			if got := readBits(bits[:], 28, 1); got != test.ipa {
+				t.Fatalf("ipa got %d, want %d", got, test.ipa)
+			}
+			if got := readBits(bits[:], 57, 1); got != test.ipb {
+				t.Fatalf("ipb got %d, want %d", got, test.ipb)
+			}
+			if got := readBits(bits[:], 74, 3); got != test.i3 {
+				t.Fatalf("i3 got %d, want %d", got, test.i3)
 			}
 		})
 	}

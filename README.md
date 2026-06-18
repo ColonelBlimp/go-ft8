@@ -121,8 +121,8 @@ Checked decode errors support `errors.Is` with `ErrInvalidDecodeInput` and
 `*ft8.DecoderOptionError` for structured details such as sample counts or the
 invalid option field.
 
-Encode supported standard FT8 messages to protocol bits, LDPC codeword, and
-tone sequence:
+Encode supported standard FT8 messages, including the standard `/P` variant,
+to protocol bits, LDPC codeword, and tone sequence:
 
 ```go
 encoded, err := ft8.EncodeStandardMessage("CQ K1ABC FN42")
