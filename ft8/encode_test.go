@@ -20,12 +20,15 @@ func TestEncodeStandardMessageRoundTrips(t *testing.T) {
 		{name: "final73", in: "PA2JFX SV3CNX 73", want: "PA2JFX SV3CNX 73"},
 		{name: "responseReport", in: "G5MJF YM4KF R-11", want: "G5MJF YM4KF R-11"},
 		{name: "directedCQ", in: "CQ DX S56GD JN65", want: "CQ DX S56GD JN65"},
+		{name: "fieldDayCQ", in: "cq fd k1abc fn42", want: "CQ FD K1ABC FN42"},
 		{name: "extraWhitespace", in: "  cq   dx   s56gd   jn65  ", want: "CQ DX S56GD JN65"},
 		{name: "portableFirstCall", in: "G4ABC/P PA9XYZ JO22", want: "G4ABC/P PA9XYZ JO22"},
 		{name: "portableSecondCall", in: "PA9XYZ G4ABC/P RR73", want: "PA9XYZ G4ABC/P RR73"},
 		{name: "portableBothCalls", in: "PA3XYZ/P GM4ABC/P R JO22", want: "PA3XYZ/P GM4ABC/P R JO22"},
 		{name: "portableCQ", in: "CQ G4ABC/P IO91", want: "CQ G4ABC/P IO91"},
 		{name: "portableDirectedCQ", in: "cq test g4abc/p io91", want: "CQ TEST G4ABC/P IO91"},
+		{name: "fieldDayExchange", in: "k1abc   w9xyz   6a   wi", want: "K1ABC W9XYZ 6A WI"},
+		{name: "fieldDayResponseExchange", in: "w9xyz k1abc r 2b ema", want: "W9XYZ K1ABC R 2B EMA"},
 	}
 
 	for _, test := range tests {
@@ -86,6 +89,12 @@ func TestEncodeStandardMessageRejectsUnsupportedMessages(t *testing.T) {
 		"CQ TEST/P G4ABC IO91",
 		"G4ABC PA9XYZ/P/P JO22",
 		"G4ABC PA9XYZ JO22/P",
+		"CQ K1ABC 6A WI",
+		"K1ABC W9XYZ 0A WI",
+		"K1ABC W9XYZ 33A WI",
+		"K1ABC W9XYZ 6I WI",
+		"K1ABC W9XYZ 6A ZZ",
+		"K1ABC W9XYZ R6A WI",
 	}
 	for _, test := range tests {
 		t.Run(test, func(t *testing.T) {

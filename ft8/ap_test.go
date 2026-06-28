@@ -32,6 +32,18 @@ func TestAPProfilesForceExpectedBits(t *testing.T) {
 	if got := readBits(cqCOTA.bits[:], 74, 3); got != 1 {
 		t.Fatalf("cq-cota i3 got %d, want 1", got)
 	}
+
+	cqFD := findAPProfile(t, ft8BroadAPProfiles, "cq-fd")
+	wantFD, ok := pack28("CQ_FD")
+	if !ok {
+		t.Fatal("pack28(CQ_FD) failed")
+	}
+	if got := readBits(cqFD.bits[:], 0, 28); got != wantFD {
+		t.Fatalf("cq-fd n28 got %d, want %d", got, wantFD)
+	}
+	if got := readBits(cqFD.bits[:], 74, 3); got != 1 {
+		t.Fatalf("cq-fd i3 got %d, want 1", got)
+	}
 }
 
 func TestDecodeLLRPassAPDiagnosticsSuccess(t *testing.T) {

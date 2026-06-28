@@ -19,9 +19,9 @@
 // DecoderOptionError for structured validation details.
 //
 // Decode currently supports free text, standard messages, the standard /P
-// variant, and type 4 compound/nonstandard-call messages. DXpedition, Field
-// Day, telemetry, RTTY Roundup, and type 5 EU VHF contest payloads are not yet
-// unpacked.
+// variant, ARRL Field Day exchange messages, and type 4 compound/nonstandard-call
+// messages. DXpedition, telemetry, RTTY Roundup, and type 5 EU VHF contest
+// payloads are not yet unpacked.
 // The default decoder includes a conservative CQ AP profile. EnableBroadAP and
 // DeepDecoderOptions add experimental directed-CQ AP profiles.
 // APCallHints and (*Decoder).SetAPCallHints provide upstream-ranked callsign

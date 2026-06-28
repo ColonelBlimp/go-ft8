@@ -121,8 +121,8 @@ Checked decode errors support `errors.Is` with `ErrInvalidDecodeInput` and
 `*ft8.DecoderOptionError` for structured details such as sample counts or the
 invalid option field.
 
-Encode supported standard FT8 messages, including the standard `/P` variant,
-to protocol bits, LDPC codeword, and tone sequence:
+Encode supported standard FT8 messages, including the standard `/P` variant and
+ARRL Field Day exchanges, to protocol bits, LDPC codeword, and tone sequence:
 
 ```go
 encoded, err := ft8.EncodeStandardMessage("CQ K1ABC FN42")
@@ -147,6 +147,7 @@ Supported decode payloads:
 | Type | Status |
 | ---- | ------ |
 | `i3=0,n3=0` | Free text, up to 13 characters |
+| `i3=0,n3=3` and `i3=0,n3=4` | ARRL Field Day exchange |
 | `i3=1` | Standard messages: CQ, calls, grid, reports, RRR, RR73, 73 |
 | `i3=2` | Standard `/P` form used by European VHF-style messages |
 | `i3=4` | Compound/nonstandard calls using 12-bit hash context |
@@ -156,7 +157,6 @@ Known decode gaps:
 | Type | Missing family |
 | ---- | -------------- |
 | `i3=0,n3=1` | DXpedition / Fox-Hound |
-| `i3=0,n3=3` and `i3=0,n3=4` | ARRL Field Day |
 | `i3=0,n3=5` | Telemetry, 18 hex characters |
 | `i3=3` | ARRL RTTY Roundup |
 | `i3=5` | EU VHF contest with hashed calls, report, serial, and grid6 |

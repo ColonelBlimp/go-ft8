@@ -38,6 +38,8 @@ func unpack77WithHashes(bits []int8, hashes *hashTable) (string, bool) {
 	switch {
 	case i3 == 0 && n3 == 0:
 		return unpackFreeText(bits[:71])
+	case i3 == 0 && (n3 == 3 || n3 == 4):
+		return unpackARRLFieldDay(bits, n3, hashes)
 	case i3 == 1 || i3 == 2:
 		return unpackStandard(bits, i3, hashes)
 	case i3 == 4:

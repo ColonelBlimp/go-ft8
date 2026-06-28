@@ -220,6 +220,7 @@ func initBroadAPProfiles() []apProfile {
 		initCall1APProfile("cq-sota", "CQ_SOTA", 1),
 		initCall1APProfile("cq-qrp", "CQ_QRP", 1),
 		initCall1APProfile("cq-cota", "CQ_COTA", 1),
+		initCall1APProfile("cq-fd", "CQ_FD", 1),
 	}
 	return profiles
 }

@@ -10,6 +10,9 @@ import (
 
 func pack77StandardMessage(msg string) ([77]int8, bool) {
 	fields := strings.Fields(strings.ToUpper(msg))
+	if bits, ok := pack77ARRLFieldDayMessage(fields); ok {
+		return bits, true
+	}
 	if len(fields) >= 3 && fields[0] == "CQ" {
 		if _, _, ok := pack28WithPortable(fields[2]); ok {
 			normalized := make([]string, 0, len(fields)-1)
