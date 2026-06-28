@@ -8,16 +8,152 @@ import (
 	"strings"
 )
 
-var arrlFieldDaySections = []string{
-	"AB", "AK", "AL", "AR", "AZ", "BC", "CO", "CT", "DE", "EB",
-	"EMA", "ENY", "EPA", "EWA", "GA", "GH", "IA", "ID", "IL", "IN",
-	"KS", "KY", "LA", "LAX", "NS", "MB", "MDC", "ME", "MI", "MN",
-	"MO", "MS", "MT", "NC", "ND", "NE", "NFL", "NH", "NL", "NLI",
-	"NM", "NNJ", "NNY", "TER", "NTX", "NV", "OH", "OK", "ONE", "ONN",
-	"ONS", "OR", "ORG", "PAC", "PR", "QC", "RI", "SB", "SC", "SCV",
-	"SD", "SDG", "SF", "SFL", "SJV", "SK", "SNJ", "STX", "SV", "TN",
-	"UT", "VA", "VI", "VT", "WCF", "WI", "WMA", "WNY", "WPA", "WTX",
-	"WV", "WWA", "WY", "DX", "PE", "NB",
+// ARRLFieldDaySection is a canonical ARRL/RAC Field Day section code.
+type ARRLFieldDaySection string
+
+// String returns the canonical section code.
+func (section ARRLFieldDaySection) String() string {
+	return string(section)
+}
+
+const (
+	ARRLFieldDaySectionAB  ARRLFieldDaySection = "AB"
+	ARRLFieldDaySectionAK  ARRLFieldDaySection = "AK"
+	ARRLFieldDaySectionAL  ARRLFieldDaySection = "AL"
+	ARRLFieldDaySectionAR  ARRLFieldDaySection = "AR"
+	ARRLFieldDaySectionAZ  ARRLFieldDaySection = "AZ"
+	ARRLFieldDaySectionBC  ARRLFieldDaySection = "BC"
+	ARRLFieldDaySectionCO  ARRLFieldDaySection = "CO"
+	ARRLFieldDaySectionCT  ARRLFieldDaySection = "CT"
+	ARRLFieldDaySectionDE  ARRLFieldDaySection = "DE"
+	ARRLFieldDaySectionEB  ARRLFieldDaySection = "EB"
+	ARRLFieldDaySectionEMA ARRLFieldDaySection = "EMA"
+	ARRLFieldDaySectionENY ARRLFieldDaySection = "ENY"
+	ARRLFieldDaySectionEPA ARRLFieldDaySection = "EPA"
+	ARRLFieldDaySectionEWA ARRLFieldDaySection = "EWA"
+	ARRLFieldDaySectionGA  ARRLFieldDaySection = "GA"
+	ARRLFieldDaySectionGH  ARRLFieldDaySection = "GH"
+	ARRLFieldDaySectionIA  ARRLFieldDaySection = "IA"
+	ARRLFieldDaySectionID  ARRLFieldDaySection = "ID"
+	ARRLFieldDaySectionIL  ARRLFieldDaySection = "IL"
+	ARRLFieldDaySectionIN  ARRLFieldDaySection = "IN"
+	ARRLFieldDaySectionKS  ARRLFieldDaySection = "KS"
+	ARRLFieldDaySectionKY  ARRLFieldDaySection = "KY"
+	ARRLFieldDaySectionLA  ARRLFieldDaySection = "LA"
+	ARRLFieldDaySectionLAX ARRLFieldDaySection = "LAX"
+	ARRLFieldDaySectionNS  ARRLFieldDaySection = "NS"
+	ARRLFieldDaySectionMB  ARRLFieldDaySection = "MB"
+	ARRLFieldDaySectionMDC ARRLFieldDaySection = "MDC"
+	ARRLFieldDaySectionME  ARRLFieldDaySection = "ME"
+	ARRLFieldDaySectionMI  ARRLFieldDaySection = "MI"
+	ARRLFieldDaySectionMN  ARRLFieldDaySection = "MN"
+	ARRLFieldDaySectionMO  ARRLFieldDaySection = "MO"
+	ARRLFieldDaySectionMS  ARRLFieldDaySection = "MS"
+	ARRLFieldDaySectionMT  ARRLFieldDaySection = "MT"
+	ARRLFieldDaySectionNC  ARRLFieldDaySection = "NC"
+	ARRLFieldDaySectionND  ARRLFieldDaySection = "ND"
+	ARRLFieldDaySectionNE  ARRLFieldDaySection = "NE"
+	ARRLFieldDaySectionNFL ARRLFieldDaySection = "NFL"
+	ARRLFieldDaySectionNH  ARRLFieldDaySection = "NH"
+	ARRLFieldDaySectionNL  ARRLFieldDaySection = "NL"
+	ARRLFieldDaySectionNLI ARRLFieldDaySection = "NLI"
+	ARRLFieldDaySectionNM  ARRLFieldDaySection = "NM"
+	ARRLFieldDaySectionNNJ ARRLFieldDaySection = "NNJ"
+	ARRLFieldDaySectionNNY ARRLFieldDaySection = "NNY"
+	ARRLFieldDaySectionTER ARRLFieldDaySection = "TER"
+	ARRLFieldDaySectionNTX ARRLFieldDaySection = "NTX"
+	ARRLFieldDaySectionNV  ARRLFieldDaySection = "NV"
+	ARRLFieldDaySectionOH  ARRLFieldDaySection = "OH"
+	ARRLFieldDaySectionOK  ARRLFieldDaySection = "OK"
+	ARRLFieldDaySectionONE ARRLFieldDaySection = "ONE"
+	ARRLFieldDaySectionONN ARRLFieldDaySection = "ONN"
+	ARRLFieldDaySectionONS ARRLFieldDaySection = "ONS"
+	ARRLFieldDaySectionOR  ARRLFieldDaySection = "OR"
+	ARRLFieldDaySectionORG ARRLFieldDaySection = "ORG"
+	ARRLFieldDaySectionPAC ARRLFieldDaySection = "PAC"
+	ARRLFieldDaySectionPR  ARRLFieldDaySection = "PR"
+	ARRLFieldDaySectionQC  ARRLFieldDaySection = "QC"
+	ARRLFieldDaySectionRI  ARRLFieldDaySection = "RI"
+	ARRLFieldDaySectionSB  ARRLFieldDaySection = "SB"
+	ARRLFieldDaySectionSC  ARRLFieldDaySection = "SC"
+	ARRLFieldDaySectionSCV ARRLFieldDaySection = "SCV"
+	ARRLFieldDaySectionSD  ARRLFieldDaySection = "SD"
+	ARRLFieldDaySectionSDG ARRLFieldDaySection = "SDG"
+	ARRLFieldDaySectionSF  ARRLFieldDaySection = "SF"
+	ARRLFieldDaySectionSFL ARRLFieldDaySection = "SFL"
+	ARRLFieldDaySectionSJV ARRLFieldDaySection = "SJV"
+	ARRLFieldDaySectionSK  ARRLFieldDaySection = "SK"
+	ARRLFieldDaySectionSNJ ARRLFieldDaySection = "SNJ"
+	ARRLFieldDaySectionSTX ARRLFieldDaySection = "STX"
+	ARRLFieldDaySectionSV  ARRLFieldDaySection = "SV"
+	ARRLFieldDaySectionTN  ARRLFieldDaySection = "TN"
+	ARRLFieldDaySectionUT  ARRLFieldDaySection = "UT"
+	ARRLFieldDaySectionVA  ARRLFieldDaySection = "VA"
+	ARRLFieldDaySectionVI  ARRLFieldDaySection = "VI"
+	ARRLFieldDaySectionVT  ARRLFieldDaySection = "VT"
+	ARRLFieldDaySectionWCF ARRLFieldDaySection = "WCF"
+	ARRLFieldDaySectionWI  ARRLFieldDaySection = "WI"
+	ARRLFieldDaySectionWMA ARRLFieldDaySection = "WMA"
+	ARRLFieldDaySectionWNY ARRLFieldDaySection = "WNY"
+	ARRLFieldDaySectionWPA ARRLFieldDaySection = "WPA"
+	ARRLFieldDaySectionWTX ARRLFieldDaySection = "WTX"
+	ARRLFieldDaySectionWV  ARRLFieldDaySection = "WV"
+	ARRLFieldDaySectionWWA ARRLFieldDaySection = "WWA"
+	ARRLFieldDaySectionWY  ARRLFieldDaySection = "WY"
+	ARRLFieldDaySectionDX  ARRLFieldDaySection = "DX"
+	ARRLFieldDaySectionPE  ARRLFieldDaySection = "PE"
+	ARRLFieldDaySectionNB  ARRLFieldDaySection = "NB"
+)
+
+var arrlFieldDaySections = []ARRLFieldDaySection{
+	ARRLFieldDaySectionAB, ARRLFieldDaySectionAK, ARRLFieldDaySectionAL, ARRLFieldDaySectionAR,
+	ARRLFieldDaySectionAZ, ARRLFieldDaySectionBC, ARRLFieldDaySectionCO, ARRLFieldDaySectionCT,
+	ARRLFieldDaySectionDE, ARRLFieldDaySectionEB, ARRLFieldDaySectionEMA, ARRLFieldDaySectionENY,
+	ARRLFieldDaySectionEPA, ARRLFieldDaySectionEWA, ARRLFieldDaySectionGA, ARRLFieldDaySectionGH,
+	ARRLFieldDaySectionIA, ARRLFieldDaySectionID, ARRLFieldDaySectionIL, ARRLFieldDaySectionIN,
+	ARRLFieldDaySectionKS, ARRLFieldDaySectionKY, ARRLFieldDaySectionLA, ARRLFieldDaySectionLAX,
+	ARRLFieldDaySectionNS, ARRLFieldDaySectionMB, ARRLFieldDaySectionMDC, ARRLFieldDaySectionME,
+	ARRLFieldDaySectionMI, ARRLFieldDaySectionMN, ARRLFieldDaySectionMO, ARRLFieldDaySectionMS,
+	ARRLFieldDaySectionMT, ARRLFieldDaySectionNC, ARRLFieldDaySectionND, ARRLFieldDaySectionNE,
+	ARRLFieldDaySectionNFL, ARRLFieldDaySectionNH, ARRLFieldDaySectionNL, ARRLFieldDaySectionNLI,
+	ARRLFieldDaySectionNM, ARRLFieldDaySectionNNJ, ARRLFieldDaySectionNNY, ARRLFieldDaySectionTER,
+	ARRLFieldDaySectionNTX, ARRLFieldDaySectionNV, ARRLFieldDaySectionOH, ARRLFieldDaySectionOK,
+	ARRLFieldDaySectionONE, ARRLFieldDaySectionONN, ARRLFieldDaySectionONS, ARRLFieldDaySectionOR,
+	ARRLFieldDaySectionORG, ARRLFieldDaySectionPAC, ARRLFieldDaySectionPR, ARRLFieldDaySectionQC,
+	ARRLFieldDaySectionRI, ARRLFieldDaySectionSB, ARRLFieldDaySectionSC, ARRLFieldDaySectionSCV,
+	ARRLFieldDaySectionSD, ARRLFieldDaySectionSDG, ARRLFieldDaySectionSF, ARRLFieldDaySectionSFL,
+	ARRLFieldDaySectionSJV, ARRLFieldDaySectionSK, ARRLFieldDaySectionSNJ, ARRLFieldDaySectionSTX,
+	ARRLFieldDaySectionSV, ARRLFieldDaySectionTN, ARRLFieldDaySectionUT, ARRLFieldDaySectionVA,
+	ARRLFieldDaySectionVI, ARRLFieldDaySectionVT, ARRLFieldDaySectionWCF, ARRLFieldDaySectionWI,
+	ARRLFieldDaySectionWMA, ARRLFieldDaySectionWNY, ARRLFieldDaySectionWPA, ARRLFieldDaySectionWTX,
+	ARRLFieldDaySectionWV, ARRLFieldDaySectionWWA, ARRLFieldDaySectionWY, ARRLFieldDaySectionDX,
+	ARRLFieldDaySectionPE, ARRLFieldDaySectionNB,
+}
+
+// ARRLFieldDaySections returns the canonical ARRL/RAC Field Day section codes.
+func ARRLFieldDaySections() []ARRLFieldDaySection {
+	out := make([]ARRLFieldDaySection, len(arrlFieldDaySections))
+	copy(out, arrlFieldDaySections)
+	return out
+}
+
+// ParseARRLFieldDaySection normalizes and validates an ARRL/RAC Field Day
+// section code.
+func ParseARRLFieldDaySection(section string) (ARRLFieldDaySection, bool) {
+	normalized := ARRLFieldDaySection(strings.ToUpper(strings.TrimSpace(section)))
+	for _, candidate := range arrlFieldDaySections {
+		if normalized == candidate {
+			return candidate, true
+		}
+	}
+	return "", false
+}
+
+// ValidARRLFieldDaySection reports whether section is a supported ARRL/RAC
+// Field Day section code.
+func ValidARRLFieldDaySection(section string) bool {
+	_, ok := ParseARRLFieldDaySection(section)
+	return ok
 }
 
 func pack77ARRLFieldDayMessage(fields []string) ([77]int8, bool) {
@@ -95,7 +231,7 @@ func unpackARRLFieldDay(bits []int8, n3 int, hashes *hashTable) (string, bool) {
 		ntx += 16
 	}
 	exchange := strconv.Itoa(ntx) + string(byte('A'+nclass))
-	section := arrlFieldDaySections[isec-1]
+	section := arrlFieldDaySections[isec-1].String()
 	if ir == 1 {
 		return call1 + " " + call2 + " R " + exchange + " " + section, true
 	}
@@ -123,12 +259,12 @@ func parseARRLFieldDayExchange(token string) (int, int, bool) {
 }
 
 func arrlFieldDaySectionIndex(section string) (int, bool) {
-	section = strings.ToUpper(strings.TrimSpace(section))
-	if len(section) < 2 || len(section) > 3 {
+	normalized, ok := ParseARRLFieldDaySection(section)
+	if !ok {
 		return 0, false
 	}
 	for i, candidate := range arrlFieldDaySections {
-		if section == candidate {
+		if normalized == candidate {
 			return i + 1, true
 		}
 	}

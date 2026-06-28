@@ -27,6 +27,9 @@
 // APCallHints and (*Decoder).SetAPCallHints provide upstream-ranked callsign
 // hints for bounded BP-only AP; the decoder copies, normalizes, deduplicates,
 // caps, cheaply scores per candidate, and tries only the top hypotheses.
+// ARRLFieldDaySections, ParseARRLFieldDaySection, and
+// ValidARRLFieldDaySection expose the ARRL/RAC Field Day section contract used
+// by the encoder.
 //
 // EncodeStandardMessage exposes the protocol encoder for supported standard
 // FT8 messages. The package deliberately does not handle audio device output,

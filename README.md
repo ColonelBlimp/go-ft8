@@ -133,6 +133,15 @@ if err != nil {
 fmt.Println(encoded.Text, encoded.Tones)
 ```
 
+Applications can discover and validate the ARRL/RAC Field Day sections accepted
+by the encoder:
+
+```go
+sections := ft8.ARRLFieldDaySections()
+section, ok := ft8.ParseARRLFieldDaySection("ema")
+fmt.Println(sections, section, ok)
+```
+
 The package stops at FT8 protocol artifacts. Audio output, transmit scheduling,
 PTT, and radio control belong in separate packages.
 
