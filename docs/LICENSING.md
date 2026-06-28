@@ -11,13 +11,13 @@ The complete GPLv3 license text is in `LICENSE`.
 Original contributions in this repository are asserted under:
 
 ```text
-Copyright (C) 2026 go-ft8 authors
+Copyright (C) 2026 Marc L. Veary (7Q5MLV)
 ```
 
 Source files use SPDX headers where practical:
 
 ```text
-SPDX-FileCopyrightText: 2026 go-ft8 authors
+SPDX-FileCopyrightText: 2026 Marc L. Veary (7Q5MLV)
 SPDX-License-Identifier: GPL-3.0-only
 ```
 

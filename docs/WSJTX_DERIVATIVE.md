@@ -3,14 +3,15 @@
 This repository is a research FT8 decoder implementation derived from
 WSJT-X/jt9 behavior and source-adjacent investigation.
 
-Original contributions in this repository are copyright (C) 2026 go-ft8
-authors. That assertion does not claim ownership of preexisting WSJT-X/jt9
+Original contributions in this repository are copyright (C) 2026 Marc L. Veary (7Q5MLV).
+That assertion does not claim ownership of preexisting WSJT-X/jt9
 material or third-party components.
 
 It is not a clean-room implementation and is not suitable for relicensing as a
 permissive-license project. Treat this work as a GPLv3 WSJT-X derivative.
 
-The purpose of this repository is pragmatic parity and decoder experimentation:
+The purpose of this repository is pragmatic parity, decoder experimentation,
+and as a dependency for [Station Manager](https://github.com/ColonelBlimp/station-manager):
 
 - strict-mode parity with the installed `jt9 -8` oracle for the local WAV
   fixture corpus;

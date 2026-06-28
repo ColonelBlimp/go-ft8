@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2026 go-ft8 authors
+// SPDX-FileCopyrightText: 2026 Marc L. Veary (7Q5MLV)
 // SPDX-License-Identifier: GPL-3.0-only
 
 //go:build pocketfft
