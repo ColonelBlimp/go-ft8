@@ -8,6 +8,16 @@ import (
 	"strings"
 )
 
+const ft8Base38Alphabet = " 0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ/"
+
+type standardCallSuffix int
+
+const (
+	standardCallNoSuffix standardCallSuffix = iota
+	standardCallRover
+	standardCallPortable
+)
+
 func pack77StandardMessage(msg string) ([77]int8, bool) {
 	fields := strings.Fields(strings.ToUpper(msg))
 	if bits, ok := pack77ARRLFieldDayMessage(fields); ok {
@@ -17,7 +27,7 @@ func pack77StandardMessage(msg string) ([77]int8, bool) {
 		return bits, true
 	}
 	if len(fields) >= 3 && fields[0] == "CQ" {
-		if _, _, ok := pack28WithPortable(fields[2]); ok {
+		if _, _, _, ok := pack28WithSuffix(fields[2]); ok {
 			normalized := make([]string, 0, len(fields)-1)
 			normalized = append(normalized, "CQ_"+fields[1], fields[2])
 			normalized = append(normalized, fields[3:]...)
@@ -29,16 +39,21 @@ func pack77StandardMessage(msg string) ([77]int8, bool) {
 		return out, false
 	}
 
-	n28a, ipa, ok := pack28WithPortable(fields[0])
+	n28a, ipa, suffixA, ok := pack28WithSuffix(fields[0])
 	if !ok {
 		return out, false
 	}
-	n28b, ipb, ok := pack28WithPortable(fields[1])
+	n28b, ipb, suffixB, ok := pack28WithSuffix(fields[1])
 	if !ok {
 		return out, false
 	}
 	i3 := 1
-	if ipa != 0 || ipb != 0 {
+	hasPortable := suffixA == standardCallPortable || suffixB == standardCallPortable
+	hasRover := suffixA == standardCallRover || suffixB == standardCallRover
+	if hasPortable && hasRover {
+		return out, false
+	}
+	if hasPortable {
 		i3 = 2
 	}
 
@@ -81,8 +96,8 @@ func pack77StandardMessage(msg string) ([77]int8, bool) {
 func pack77Type4CompoundMessage(fields []string) ([77]int8, bool) {
 	var out [77]int8
 	if len(fields) == 2 && fields[0] == "CQ" {
-		n58, ok := packBase38Call(fields[1])
-		if !ok || !isCompoundCall(fields[1]) {
+		n58, ok := packType4Call(fields[1], true)
+		if !ok {
 			return out, false
 		}
 		writeBits64(out[:], 12, 58, n58)
@@ -108,26 +123,22 @@ func pack77Type4CompoundMessage(fields []string) ([77]int8, bool) {
 		}
 	}
 
-	firstCompound := isCompoundCall(fields[0])
-	secondCompound := isCompoundCall(fields[1])
-	if firstCompound == secondCompound {
+	n58a, firstType4 := packType4Call(fields[0], false)
+	n58b, secondType4 := packType4Call(fields[1], false)
+	if firstType4 == secondType4 {
 		return out, false
 	}
 
-	compound := fields[1]
+	n58 := n58b
 	hashCallText := fields[0]
 	iflip := 0
-	if firstCompound {
-		compound = fields[0]
+	if firstType4 {
+		n58 = n58a
 		hashCallText = fields[1]
 		iflip = 1
 	}
 
-	n58, ok := packBase38Call(compound)
-	if !ok {
-		return out, false
-	}
-	hashCallText, ok = normalizeHashCallToken(hashCallText)
+	hashCallText, ok := normalizeHashCallToken(hashCallText)
 	if !ok {
 		return out, false
 	}
@@ -141,15 +152,15 @@ func pack77Type4CompoundMessage(fields []string) ([77]int8, bool) {
 }
 
 func packBase38Call(call string) (uint64, bool) {
-	const alphabet = " 0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ/"
 	call = strings.ToUpper(strings.TrimSpace(call))
 	if call == "" || len(call) > 11 {
 		return 0, false
 	}
-	call += strings.Repeat(" ", 11-len(call))
+	// Type-4 c58 calls are right-justified in the 11-character base-38 field.
+	call = strings.Repeat(" ", 11-len(call)) + call
 	var n uint64
 	for i := 0; i < 11; i++ {
-		idx := strings.IndexByte(alphabet, call[i])
+		idx := strings.IndexByte(ft8Base38Alphabet, call[i])
 		if idx < 0 {
 			return 0, false
 		}
@@ -158,16 +169,96 @@ func packBase38Call(call string) (uint64, bool) {
 	return n, true
 }
 
-func isCompoundCall(call string) bool {
+func packType4Call(call string, cq bool) (uint64, bool) {
 	call = strings.ToUpper(strings.TrimSpace(call))
-	if !strings.Contains(call, "/") {
+	if !type4CallOK(call, cq) {
+		return 0, false
+	}
+	return packBase38Call(call)
+}
+
+func type4CallOK(call string, cq bool) bool {
+	if len(call) < 3 || len(call) > 11 || isReservedCallToken(call) {
 		return false
 	}
-	if strings.HasSuffix(call, "/P") || strings.HasSuffix(call, "/R") {
+	if cq && len(call) <= 4 {
 		return false
 	}
-	_, ok := packBase38Call(call)
-	return ok
+	if _, _, _, ok := pack28WithSuffix(call); ok {
+		return false
+	}
+	if !base38TextOK(call) {
+		return false
+	}
+	if strings.Contains(call, "/") {
+		return slashCallOK(call)
+	}
+	if len(call) <= 4 {
+		return false
+	}
+	return hasLetter(call) && hasDigit(call)
+}
+
+func slashCallOK(call string) bool {
+	parts := strings.Split(call, "/")
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		return false
+	}
+	if callOK(parts[0]) && callAffixOK(parts[1]) {
+		return true
+	}
+	return callOK(parts[1]) && callAffixOK(parts[0])
+}
+
+func callAffixOK(s string) bool {
+	if len(s) < 1 || len(s) > 4 || isReservedCallToken(s) {
+		return false
+	}
+	for i := range s {
+		if !isLetter(s[i]) && !isDigit(s[i]) {
+			return false
+		}
+	}
+	return hasLetter(s) || hasDigit(s)
+}
+
+func base38TextOK(s string) bool {
+	if s == "" || len(s) > 11 {
+		return false
+	}
+	for i := range s {
+		if strings.IndexByte(ft8Base38Alphabet, s[i]) < 0 {
+			return false
+		}
+	}
+	return true
+}
+
+func isReservedCallToken(s string) bool {
+	switch s {
+	case "CQ", "DE", "QRZ", "R", "RRR", "RR73", "73":
+		return true
+	default:
+		return false
+	}
+}
+
+func hasLetter(s string) bool {
+	for i := range s {
+		if isLetter(s[i]) {
+			return true
+		}
+	}
+	return false
+}
+
+func hasDigit(s string) bool {
+	for i := range s {
+		if isDigit(s[i]) {
+			return true
+		}
+	}
+	return false
 }
 
 func normalizeHashCallToken(call string) (string, bool) {
@@ -175,30 +266,44 @@ func normalizeHashCallToken(call string) (string, bool) {
 	if len(call) >= 2 && call[0] == '<' && call[len(call)-1] == '>' {
 		call = strings.TrimSpace(call[1 : len(call)-1])
 	}
-	if call == "" || call == "..." || strings.Contains(call, "<") || strings.Contains(call, ">") {
+	if len(call) < 3 || call == "..." || strings.Contains(call, "<") || strings.Contains(call, ">") ||
+		isReservedCallToken(call) || !base38TextOK(call) {
 		return "", false
 	}
-	if _, ok := packBase38Call(call); !ok {
+	if _, _, _, ok := pack28WithSuffix(call); ok {
+		return call, true
+	}
+	if !type4CallOK(call, false) {
 		return "", false
 	}
 	return call, true
 }
 
-func pack28WithPortable(call string) (int, int, bool) {
+func pack28WithSuffix(call string) (int, int, standardCallSuffix, bool) {
 	call = strings.TrimSpace(strings.ToUpper(call))
-	portable := 0
-	if strings.HasSuffix(call, "/P") {
-		portable = 1
+	suffix := standardCallNoSuffix
+	flag := 0
+	switch {
+	case strings.HasSuffix(call, "/P"):
+		suffix = standardCallPortable
+		flag = 1
 		call = strings.TrimSuffix(call, "/P")
 		if !callOK(call) {
-			return 0, 0, false
+			return 0, 0, standardCallNoSuffix, false
+		}
+	case strings.HasSuffix(call, "/R"):
+		suffix = standardCallRover
+		flag = 1
+		call = strings.TrimSuffix(call, "/R")
+		if !callOK(call) {
+			return 0, 0, standardCallNoSuffix, false
 		}
 	}
 	n28, ok := pack28(call)
 	if !ok {
-		return 0, 0, false
+		return 0, 0, standardCallNoSuffix, false
 	}
-	return n28, portable, true
+	return n28, flag, suffix, true
 }
 
 func pack28(call string) (int, bool) {
@@ -433,10 +538,7 @@ func allLetters(s string) bool {
 }
 
 func writeBits(bits []int8, start int, width int, value int) {
-	for i := 0; i < width; i++ {
-		shift := uint(width - 1 - i)
-		bits[start+i] = int8((value >> shift) & 1)
-	}
+	writeBits64(bits, start, width, uint64(value))
 }
 
 func writeBits64(bits []int8, start int, width int, value uint64) {

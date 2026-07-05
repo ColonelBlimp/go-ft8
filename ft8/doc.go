@@ -32,8 +32,9 @@
 // by the encoder.
 //
 // EncodeStandardMessage exposes the protocol encoder for supported standard
-// FT8 messages. The package deliberately does not handle audio device output,
-// transmit scheduling, PTT, or radio control.
+// FT8 messages, including /P and /R suffix forms, ARRL Field Day exchanges, and
+// type 4 compound/nonstandard calls. The package deliberately does not handle
+// audio device output, transmit scheduling, PTT, or radio control.
 //
 // The decode pipeline deliberately keeps scale handling localized:
 // candidate detection is ratio-based, symbol metrics are normalized before BP,

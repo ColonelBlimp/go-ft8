@@ -121,9 +121,10 @@ Checked decode errors support `errors.Is` with `ErrInvalidDecodeInput` and
 `*ft8.DecoderOptionError` for structured details such as sample counts or the
 invalid option field.
 
-Encode supported standard FT8 messages, including the standard `/P` variant,
-ARRL Field Day exchanges, and compound/nonstandard calls such as
-`CQ PJ4/NA2AA`, to protocol bits, LDPC codeword, and tone sequence:
+Encode supported standard FT8 messages, including standard `/P` and `/R`
+suffix forms, ARRL Field Day exchanges, and compound/nonstandard calls such as
+`CQ PJ4/NA2AA` or `CQ YW18FIFA`, to protocol bits, LDPC codeword, and tone
+sequence:
 
 ```go
 encoded, err := ft8.EncodeStandardMessage("CQ K1ABC FN42")

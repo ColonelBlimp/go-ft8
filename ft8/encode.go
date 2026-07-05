@@ -30,10 +30,10 @@ type EncodedMessage struct {
 // EncodeStandardMessage encodes a supported standard FT8 message.
 //
 // This first encoder surface intentionally covers the standard structured
-// messages supported by this package's packer, including the standard /P
-// variant, ARRL Field Day exchange messages, and type 4 compound/nonstandard
-// calls. Free text, telemetry, and other specialized FT8 message types are not
-// accepted here.
+// messages supported by this package's packer, including standard /P and /R
+// suffix forms, ARRL Field Day exchange messages, and type 4 compound or
+// nonstandard calls. Free text, telemetry, and other specialized FT8 message
+// types are not accepted here.
 func EncodeStandardMessage(text string) (EncodedMessage, error) {
 	bits77, ok := pack77StandardMessage(text)
 	if !ok {

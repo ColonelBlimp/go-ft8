@@ -32,6 +32,9 @@ func TestEncodeStandardMessageRoundTrips(t *testing.T) {
 		{name: "compoundCQ", in: "cq pj4/na2aa", want: "CQ PJ4/NA2AA"},
 		{name: "compoundHashedOther", in: "k1abc pj4/na2aa rr73", want: "<...> PJ4/NA2AA RR73"},
 		{name: "compoundFirst", in: "pj4/na2aa k1abc 73", want: "PJ4/NA2AA <...> 73"},
+		{name: "slashFreeNonstandardCQ", in: "cq yw18fifa", want: "CQ YW18FIFA"},
+		{name: "roverFirstCall", in: "k1abc/r w9xyz rr73", want: "K1ABC/R W9XYZ RR73"},
+		{name: "roverSecondCall", in: "w9xyz k1abc/r r fn42", want: "W9XYZ K1ABC/R R FN42"},
 	}
 
 	for _, test := range tests {
@@ -98,6 +101,15 @@ func TestEncodeStandardMessageRejectsUnsupportedMessages(t *testing.T) {
 		"K1ABC W9XYZ 6I WI",
 		"K1ABC W9XYZ 6A ZZ",
 		"K1ABC W9XYZ R6A WI",
+		"CQ PJ4/NA2AA RR73",
+		"PJ4/NA2AA 73",
+		"CQ /",
+		"CQ //",
+		"CQ A/B",
+		"CQ 0/0",
+		"K1ABC / 73",
+		"AB PJ4/NA2AA RR73",
+		"K1ABC/R W9XYZ/P RR73",
 	}
 	for _, test := range tests {
 		t.Run(test, func(t *testing.T) {

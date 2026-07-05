@@ -276,7 +276,6 @@ func (h *hashTable) Lookup22(hash int) string {
 }
 
 func hashCall(call string, bits int) int {
-	const alphabet = " 0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ/"
 	call = strings.ToUpper(strings.TrimSpace(call))
 	var n uint64
 	// FT8 callsign hashes operate on an 11-character window, padded with
@@ -286,7 +285,7 @@ func hashCall(call string, bits int) int {
 		if i < len(call) {
 			ch = call[i]
 		}
-		idx := strings.IndexByte(alphabet, ch)
+		idx := strings.IndexByte(ft8Base38Alphabet, ch)
 		if idx < 0 {
 			idx = 0
 		}
@@ -345,10 +344,9 @@ func formatReport(snr int) string {
 }
 
 func unpackBase38Call(n uint64) string {
-	const alphabet = " 0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ/"
 	out := make([]byte, 11)
 	for i := 10; i >= 0; i-- {
-		out[i] = alphabet[n%38]
+		out[i] = ft8Base38Alphabet[n%38]
 		n /= 38
 	}
 	return strings.TrimSpace(string(out))
