@@ -22,6 +22,21 @@ type hashEntry struct {
 
 type hashTable struct {
 	calls22 []hashEntry
+	// frozen marks a read-only snapshot shared by concurrent candidate
+	// decode workers: Save becomes a no-op so lookups stay race-free and
+	// deterministic. The decode commit phase re-runs unpack against the
+	// live table, so saves are never lost.
+	frozen bool
+}
+
+// frozenSnapshot returns a read-only copy of the table for concurrent
+// workers. The copy keeps lookups deterministic regardless of worker
+// scheduling; Save calls against it are ignored.
+func (h *hashTable) frozenSnapshot() *hashTable {
+	return &hashTable{
+		calls22: append([]hashEntry(nil), h.calls22...),
+		frozen:  true,
+	}
 }
 
 func unpack77FromCodewordWithHashes(cw [174]int8, hashes *hashTable) (string, bool) {
@@ -235,6 +250,9 @@ func unpack28WithHashes(n28 int, hashes *hashTable) (string, bool) {
 }
 
 func (h *hashTable) Save(call string) {
+	if h.frozen {
+		return
+	}
 	call = strings.TrimSpace(strings.Trim(call, "<>"))
 	if call == "" || call == "..." || strings.Contains(call, "<") || len(call) < 3 {
 		return

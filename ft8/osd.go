@@ -5,6 +5,7 @@ package ft8
 
 import (
 	"math"
+	"math/bits"
 	"sync"
 )
 
@@ -13,7 +14,12 @@ var (
 	osdGenRows [91][174]int8
 )
 
-const osdRowWords = (174 + 63) / 64
+const (
+	osdRowWords = (174 + 63) / 64
+	// osdTailWords covers the 83 parity-tail bits handled as bitsets in the
+	// OSD flip search.
+	osdTailWords = (174 - 91 + 63) / 64
+)
 
 type osdRowBits [osdRowWords]uint64
 
@@ -147,13 +153,13 @@ func osd17491(rx *[174]float64, channel *[174]float64, apmask *[174]int8) (ldpcR
 	}
 
 	var g2 [n][k]int8
-	var g2Tail [k][n - k]int8
+	var g2Tail [k][osdTailWords]uint64
 	for row := 0; row < k; row++ {
 		for col := 0; col < n; col++ {
 			value := osdBitValue(&genmrb[row], col)
 			g2[col][row] = value
-			if col >= k {
-				g2Tail[row][col-k] = value
+			if col >= k && value != 0 {
+				g2Tail[row][(col-k)/64] |= 1 << uint((col-k)%64)
 			}
 		}
 	}
@@ -173,6 +179,13 @@ func osd17491(rx *[174]float64, channel *[174]float64, apmask *[174]int8) (ldpcR
 		rapmask[i] = apmask[orig]
 	}
 
+	var rhardTail [osdTailWords]uint64
+	for i := 0; i < n-k; i++ {
+		if rhard[k+i] == 1 {
+			rhardTail[i/64] |= 1 << uint(i%64)
+		}
+	}
+
 	var m0 [k]int8
 	copy(m0[:], rhard[:k])
 	baseCode := mrbEncode(m0, &g2)
@@ -180,8 +193,13 @@ func osd17491(rx *[174]float64, channel *[174]float64, apmask *[174]int8) (ldpcR
 	bestXor := xorWeight(best[:], rhard[:])
 	bestDistance := weightedDistance(best[:], rhard[:], rabs[:])
 
+	// nd1kpt counts tail errors among the first nt parity positions, which
+	// must fit inside the first tail word for the mask below.
+	const ntMask = 1<<nt - 1
+	_ = uint(63 - nt)
+
 	for base := k - 1; base >= 0; base-- {
-		var e2sub [n - k]int8
+		var e2sub [osdTailWords]uint64
 		var d1 float64
 		var cached bool
 
@@ -191,61 +209,51 @@ func osd17491(rx *[174]float64, channel *[174]float64, apmask *[174]int8) (ldpcR
 			}
 
 			var ce [n]int8
-			var e2 [n - k]int8
+			var ceValid bool
+			var e2 [osdTailWords]uint64
 			nd1kpt := 0
 			if flip == base || !cached {
 				ce = mrbEncodeFlipped(baseCode, &g2, base, flip)
-				nd1kpt = 1
-				for i := 0; i < nt; i++ {
-					bit := ce[k+i] ^ rhard[k+i]
-					e2sub[i] = bit
-					e2[i] = bit
-					nd1kpt += int(bit)
+				ceValid = true
+				var ceTail [osdTailWords]uint64
+				for i := 0; i < n-k; i++ {
+					if ce[k+i] == 1 {
+						ceTail[i/64] |= 1 << uint(i%64)
+					}
 				}
-				for i := nt; i < n-k; i++ {
-					bit := ce[k+i] ^ rhard[k+i]
-					e2sub[i] = bit
-					e2[i] = bit
+				for word := range e2sub {
+					e2sub[word] = ceTail[word] ^ rhardTail[word]
 				}
+				e2 = e2sub
+				nd1kpt = 1 + bits.OnesCount64(e2sub[0]&ntMask)
 				d1 = rabs[base]
 				cached = true
 			} else {
-				nd1kpt = 2
-				for i := 0; i < nt; i++ {
-					bit := e2sub[i] ^ g2Tail[flip][i]
-					e2[i] = bit
-					nd1kpt += int(bit)
+				for word := range e2 {
+					e2[word] = e2sub[word] ^ g2Tail[flip][word]
 				}
-				for i := nt; i < n-k; i++ {
-					e2[i] = e2sub[i] ^ g2Tail[flip][i]
-				}
+				nd1kpt = 2 + bits.OnesCount64(e2[0]&ntMask)
 			}
 
 			if nd1kpt > ntheta {
 				continue
 			}
-			var distance float64
-			if flip == base {
-				distance = d1
-				for i := 0; i < n-k; i++ {
-					if e2sub[i] != 0 {
-						distance += rabs[k+i]
-					}
-				}
-			} else {
-				distance = d1
+			distance := d1
+			if flip != base {
 				ceFlip := baseCode[flip] ^ g2[flip][base] ^ g2[flip][flip]
 				if ceFlip != rhard[flip] {
 					distance += rabs[flip]
 				}
-				for i := 0; i < n-k; i++ {
-					if e2[i] != 0 {
-						distance += rabs[k+i]
-					}
+			}
+			for word, tailBits := range e2 {
+				for tailBits != 0 {
+					i := word*64 + bits.TrailingZeros64(tailBits)
+					distance += rabs[k+i]
+					tailBits &= tailBits - 1
 				}
 			}
 			if distance < bestDistance {
-				if flip != base {
+				if !ceValid {
 					ce = mrbEncodeFlipped(baseCode, &g2, base, flip)
 				}
 				bestDistance = distance

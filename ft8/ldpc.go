@@ -107,7 +107,7 @@ func decode17491BP(llr *[174]float64, apmask *[174]int8, saved *[ldpcMaxSavedIte
 
 		for check := 0; check < 83; check++ {
 			for edge := 0; edge < ldpcNrw[check]; edge++ {
-				tanhTOC[check][edge] = float32(math.Tanh(float64(-toc[check][edge] / 2)))
+				tanhTOC[check][edge] = float32(fastTanh(float64(-toc[check][edge]) / 2))
 			}
 		}
 
@@ -219,6 +219,24 @@ func softDistance(cw [174]int8, llr *[174]float64) float64 {
 		}
 	}
 	return d
+}
+
+// fastTanh approximates math.Tanh with the Padé(7,6) continued-fraction
+// rational, clamped to ±1 outside ±4.97. Maximum absolute error is under
+// 1e-4 (worst at the clamp boundary), well inside what belief propagation
+// tolerates: the inverse step platanh is a much coarser piecewise-linear
+// fit, and the results are stored as float32 anyway.
+func fastTanh(x float64) float64 {
+	if x > 4.97 {
+		return 1
+	}
+	if x < -4.97 {
+		return -1
+	}
+	x2 := x * x
+	p := x * (135135 + x2*(17325+x2*(378+x2)))
+	q := 135135 + x2*(62370+x2*(3150+x2*28))
+	return p / q
 }
 
 func platanh(x float64) float64 {

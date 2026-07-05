@@ -61,6 +61,10 @@ type DecoderOptions struct {
 	// MaxAPCallHypotheses caps AP call-hint hypotheses tried per candidate when
 	// positive. The default is 2 and the maximum accepted by checked APIs is 8.
 	MaxAPCallHypotheses int
+	// Workers caps the goroutines used to analyze candidates concurrently
+	// within one decode call. The zero value uses all available CPUs
+	// (GOMAXPROCS); 1 forces the sequential decode path.
+	Workers int
 }
 
 // DeepDecoderOptions returns an experimental configuration that searches
@@ -94,6 +98,7 @@ type decodeOptions struct {
 	enableBroadAP       bool
 	apCallHints         []apCallHint
 	maxAPCallHypotheses int
+	workers             int
 }
 
 func normalizeDecoderOptions(o DecoderOptions) decodeOptions {
@@ -146,6 +151,9 @@ func normalizeDecoderOptions(o DecoderOptions) decodeOptions {
 			out.maxAPCallHypotheses = ft8MaxAPCallHypotheses
 		}
 	}
+	if o.Workers > 0 {
+		out.workers = o.Workers
+	}
 	return out
 }
 
@@ -190,5 +198,6 @@ func decoderOptionsEmpty(o DecoderOptions) bool {
 		!o.EnableOSD &&
 		!o.EnableBroadAP &&
 		len(o.APCallHints) == 0 &&
-		o.MaxAPCallHypotheses == 0
+		o.MaxAPCallHypotheses == 0 &&
+		o.Workers == 0
 }

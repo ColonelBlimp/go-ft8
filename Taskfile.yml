@@ -12,7 +12,7 @@ tasks:
       - task --list
 
   test:
-    desc: Run the full default Go test suite.
+    desc: Run the full Go test suite with the default backend (PocketFFT when CGO is available).
     cmds:
       - go test ./...
 
@@ -21,53 +21,53 @@ tasks:
     cmds:
       - go test ./... -run 'TestCRC14FastMatchesSlow|TestPackEncodeRoundTripsStandardMessages|TestEncodeStandardMessage|TestDecodeMessagesWithReportEmptyInputDiagnostics|TestDecodeMessagesCheckedRejectsInvalidInput|TestDecodeStructuredCheckedRejectsInvalidInput|TestDecodeOptions'
 
-  test:prod:
-    desc: Run the full test suite with the production PocketFFT backend.
+  test:gonum:
+    desc: Run the full test suite with the pure-Go Gonum FFT backend.
     cmds:
-      - go test -tags pocketfft ./...
+      - go test -tags gonumfft ./...
 
-  test:smoke-prod:
-    desc: Run smoke tests with the production PocketFFT backend.
+  test:smoke-gonum:
+    desc: Run smoke tests with the pure-Go Gonum FFT backend.
     cmds:
-      - go test -tags pocketfft ./... -run 'TestCRC14FastMatchesSlow|TestPackEncodeRoundTripsStandardMessages|TestEncodeStandardMessage|TestDecodeMessagesWithReportEmptyInputDiagnostics|TestDecodeMessagesCheckedRejectsInvalidInput|TestDecodeStructuredCheckedRejectsInvalidInput|TestDecodeOptions'
+      - go test -tags gonumfft ./... -run 'TestCRC14FastMatchesSlow|TestPackEncodeRoundTripsStandardMessages|TestEncodeStandardMessage|TestDecodeMessagesWithReportEmptyInputDiagnostics|TestDecodeMessagesCheckedRejectsInvalidInput|TestDecodeStructuredCheckedRejectsInvalidInput|TestDecodeOptions'
 
   test:race:
     desc: Run race detector smoke tests for the FT8 package.
     cmds:
       - go test -race ./ft8 -run 'TestStatelessDecodeConcurrentNoRace|TestDecodeMessagesCheckedRejectsInvalidInput|TestDecodeStructuredCheckedRejectsInvalidInput|FuzzDecodePublicAPIsNoPanic'
 
-  test:race-prod:
-    desc: Run FT8 race detector smoke tests with the production PocketFFT backend.
+  test:race-gonum:
+    desc: Run FT8 race detector smoke tests with the pure-Go Gonum FFT backend.
     cmds:
-      - go test -race -tags pocketfft ./ft8 -run 'TestStatelessDecodeConcurrentNoRace|TestDecodeMessagesCheckedRejectsInvalidInput|TestDecodeStructuredCheckedRejectsInvalidInput|FuzzDecodePublicAPIsNoPanic'
+      - go test -race -tags gonumfft ./ft8 -run 'TestStatelessDecodeConcurrentNoRace|TestDecodeMessagesCheckedRejectsInvalidInput|TestDecodeStructuredCheckedRejectsInvalidInput|FuzzDecodePublicAPIsNoPanic'
 
   bench:strict:
-    desc: Benchmark strict decoding with the default Gonum backend.
+    desc: Benchmark strict decoding with the default backend.
     cmds:
       - go test ./ft8 -run=^$ -bench='BenchmarkDecodeMessagesPerFixture$' -benchmem -benchtime=1x -count=1
 
-  bench:strict-prod:
-    desc: Benchmark strict decoding with the production PocketFFT backend.
+  bench:strict-gonum:
+    desc: Benchmark strict decoding with the pure-Go Gonum FFT backend.
     cmds:
-      - go test -tags pocketfft ./ft8 -run=^$ -bench='BenchmarkDecodeMessagesPerFixture$' -benchmem -benchtime=1x -count=1
+      - go test -tags gonumfft ./ft8 -run=^$ -bench='BenchmarkDecodeMessagesPerFixture$' -benchmem -benchtime=1x -count=1
 
   bench:deep:
-    desc: Benchmark deep decoding with the default Gonum backend.
+    desc: Benchmark deep decoding with the default backend.
     cmds:
       - go test ./ft8 -run=^$ -bench='BenchmarkDecodeMessagesDeepPerFixture$' -benchmem -benchtime=1x -count=1
 
-  bench:deep-prod:
-    desc: Benchmark deep decoding with the production PocketFFT backend.
+  bench:deep-gonum:
+    desc: Benchmark deep decoding with the pure-Go Gonum FFT backend.
     cmds:
-      - go test -tags pocketfft ./ft8 -run=^$ -bench='BenchmarkDecodeMessagesDeepPerFixture$' -benchmem -benchtime=1x -count=1
+      - go test -tags gonumfft ./ft8 -run=^$ -bench='BenchmarkDecodeMessagesDeepPerFixture$' -benchmem -benchtime=1x -count=1
 
-  bench:structured-deep-prod:
-    desc: Benchmark structured strict+deep decoding with the production PocketFFT backend.
+  bench:structured-deep:
+    desc: Benchmark structured strict+deep decoding with the default backend.
     cmds:
-      - go test -tags pocketfft ./ft8 -run=^$ -bench='BenchmarkDecodeStructuredDeepPerFixture$' -benchmem -benchtime=1x -count=1
+      - go test ./ft8 -run=^$ -bench='BenchmarkDecodeStructuredDeepPerFixture$' -benchmem -benchtime=1x -count=1
 
-  bench:prod:
-    desc: Run production PocketFFT strict and deep decode benchmarks.
+  bench:
+    desc: Run strict and deep decode benchmarks with the default backend.
     deps:
-      - bench:strict-prod
-      - bench:deep-prod
+      - bench:strict
+      - bench:deep

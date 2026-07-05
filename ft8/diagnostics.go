@@ -132,6 +132,50 @@ func newDecodeDiagnostics(iwave []int16) DecodeDiagnostics {
 	return diagnostics
 }
 
+// merge folds candidate-level work counters recorded by one concurrent decode
+// worker into the caller's diagnostics. Only counters touched during candidate
+// analysis are merged; slot-level fields such as Duration, InputSamples,
+// BlocksSearched, and the commit-phase counters stay owned by the caller.
+func (diagnostics *DecodeDiagnostics) merge(worker *DecodeDiagnostics) {
+	diagnostics.RejectedHardSync += worker.RejectedHardSync
+	diagnostics.RejectedCostas += worker.RejectedCostas
+	diagnostics.LDPCAttempts += worker.LDPCAttempts
+	diagnostics.MetricLDPCAttempts += worker.MetricLDPCAttempts
+	diagnostics.APAttempts += worker.APAttempts
+	diagnostics.APSuccesses += worker.APSuccesses
+	diagnostics.APRejectedAfterLDPC += worker.APRejectedAfterLDPC
+	if worker.APCallHints > diagnostics.APCallHints {
+		diagnostics.APCallHints = worker.APCallHints
+	}
+	diagnostics.APHintProfilesScored += worker.APHintProfilesScored
+	diagnostics.APHintHypothesesSelected += worker.APHintHypothesesSelected
+	diagnostics.APHintHypothesesBelowThreshold += worker.APHintHypothesesBelowThreshold
+	diagnostics.LDPCFailures += worker.LDPCFailures
+	diagnostics.RejectedHardErrors += worker.RejectedHardErrors
+	diagnostics.RejectedAllZero += worker.RejectedAllZero
+	diagnostics.UnpackFailures += worker.UnpackFailures
+	diagnostics.RejectedMessageFilter += worker.RejectedMessageFilter
+	diagnostics.APAttemptsByProfile = mergeCountMap(diagnostics.APAttemptsByProfile, worker.APAttemptsByProfile)
+	diagnostics.APAttemptsBySource = mergeCountMap(diagnostics.APAttemptsBySource, worker.APAttemptsBySource)
+	diagnostics.APSuccessesByProfile = mergeCountMap(diagnostics.APSuccessesByProfile, worker.APSuccessesByProfile)
+	diagnostics.APSuccessesBySource = mergeCountMap(diagnostics.APSuccessesBySource, worker.APSuccessesBySource)
+	diagnostics.APRejectedAfterLDPCByProfile = mergeCountMap(diagnostics.APRejectedAfterLDPCByProfile, worker.APRejectedAfterLDPCByProfile)
+	diagnostics.APRejectedAfterLDPCBySource = mergeCountMap(diagnostics.APRejectedAfterLDPCBySource, worker.APRejectedAfterLDPCBySource)
+}
+
+func mergeCountMap(dst, src map[string]int) map[string]int {
+	if len(src) == 0 {
+		return dst
+	}
+	if dst == nil {
+		dst = make(map[string]int, len(src))
+	}
+	for key, count := range src {
+		dst[key] += count
+	}
+	return dst
+}
+
 func (diagnostics *DecodeDiagnostics) recordLDPCAttempt(apProfileName string, apSource string) {
 	diagnostics.LDPCAttempts++
 	if apProfileName == "" {

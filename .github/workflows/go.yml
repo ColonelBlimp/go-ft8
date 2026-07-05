@@ -23,11 +23,11 @@ jobs:
       - name: Test
         run: task test
 
-      - name: Test production smoke path
-        run: task test:smoke-prod
+      - name: Test Gonum fallback smoke path
+        run: task test:smoke-gonum
 
       - name: Test race smoke path
         run: task test:race
 
-      - name: Test production race smoke path
-        run: task test:race-prod
+      - name: Test Gonum fallback race smoke path
+        run: task test:race-gonum

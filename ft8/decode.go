@@ -5,8 +5,11 @@ package ft8
 
 import (
 	"math"
+	"runtime"
 	"sort"
 	"strings"
+	"sync"
+	"sync/atomic"
 )
 
 // DecodedMessage describes one recovered FT8 message and the signal/decode
@@ -98,45 +101,79 @@ func decodeMessagesCoreWithDiagnostics(iwave []int16, a7Hints []a7Hint, hashes *
 				diagnostics.CandidateSearches++
 				diagnostics.CandidatesFound += len(candidates)
 			}
-			ds := getDownsampler()
 			var subtract []DecodedMessage
 			var subtractCodewords [][174]int8
-			for candIndex, cand := range candidates {
-				if diagnostics != nil {
-					diagnostics.CandidatesAnalyzed++
-				}
-				analysis, decoded, ok := decodeCandidateVariantsForMetricSet(dd, ds, cand, candIndex == 0, pass, hashes, options, diagnostics)
-				if !ok {
-					continue
-				}
+			commit := func(text string, refined refinedCandidate, cand candidate, symbolPower *[8][ft8Symbols]float64, result *ldpcResult) {
 				if diagnostics != nil {
 					diagnostics.DecodedCandidates++
 				}
 				msg := DecodedMessage{
-					Text:           decoded.Text,
-					FreqHz:         analysis.Refined.FreqHz,
-					DTSec:          analysis.Refined.DTSec - 0.5,
-					Sync:           analysis.candidate.Sync,
-					HardSync:       analysis.Refined.HardSync,
-					CostasGeo:      analysis.Refined.CostasGeo,
-					CostasMinBlock: analysis.Refined.CostasMinBlock,
+					Text:           text,
+					FreqHz:         refined.FreqHz,
+					DTSec:          refined.DTSec - 0.5,
+					Sync:           cand.Sync,
+					HardSync:       refined.HardSync,
+					CostasGeo:      refined.CostasGeo,
+					CostasMinBlock: refined.CostasMinBlock,
 					Blocks:         blocks,
-					HardErrors:     decoded.Result.HardErrors,
-					DMin:           decoded.Result.DMin,
+					HardErrors:     result.HardErrors,
+					DMin:           result.DMin,
 				}
 				subtract = append(subtract, msg)
-				subtractCodewords = append(subtractCodewords, decoded.Result.Codeword)
-				if seen[decoded.Text] {
+				subtractCodewords = append(subtractCodewords, result.Codeword)
+				if seen[text] {
 					if diagnostics != nil {
 						diagnostics.DuplicateMessages++
 					}
-					continue
+					return
 				}
-				seen[decoded.Text] = true
-				msg.SNR = estimateSNR(tonesFromCodeword(decoded.Result.Codeword), analysis.SymbolPower, baseline.noiseAtFreq(analysis.candidate.FreqHz))
+				seen[text] = true
+				msg.SNR = estimateSNR(tonesFromCodeword(result.Codeword), *symbolPower, baseline.noiseAtFreq(cand.FreqHz))
 				out = append(out, msg)
 			}
-			putDownsampler(ds)
+			if workers := decodeWorkerCount(options, len(candidates)); workers > 1 {
+				outcomes := decodeCandidatesParallel(dd, candidates, workers, pass, hashes, options, diagnostics)
+				for i := range outcomes {
+					outcome := &outcomes[i]
+					if diagnostics != nil {
+						diagnostics.CandidatesAnalyzed++
+					}
+					if !outcome.ok {
+						continue
+					}
+					// Workers unpack against a frozen hash-table snapshot;
+					// re-unpack here against the live table so hash saves and
+					// lookups happen in candidate order, matching the
+					// sequential path.
+					text, ok := unpack77FromCodewordWithHashes(outcome.result.Codeword, hashes)
+					if !ok {
+						if diagnostics != nil {
+							diagnostics.UnpackFailures++
+						}
+						continue
+					}
+					if strings.Contains(text, "/R") || strings.HasPrefix(text, "TU; ") {
+						if diagnostics != nil {
+							diagnostics.RejectedMessageFilter++
+						}
+						continue
+					}
+					commit(text, outcome.refined, candidates[i], &outcome.symbolPower, &outcome.result)
+				}
+			} else {
+				ds := getDownsampler()
+				for candIndex, cand := range candidates {
+					if diagnostics != nil {
+						diagnostics.CandidatesAnalyzed++
+					}
+					analysis, decoded, ok := decodeCandidateVariantsForMetricSet(dd, ds, cand, candIndex == 0, pass, hashes, options, diagnostics)
+					if !ok {
+						continue
+					}
+					commit(decoded.Text, analysis.Refined, analysis.candidate, &analysis.SymbolPower, &decoded.Result)
+				}
+				putDownsampler(ds)
+			}
 			if len(subtract) == 0 {
 				break
 			}
@@ -174,6 +211,79 @@ func decodeMessagesCoreWithDiagnostics(iwave []int16, a7Hints []a7Hint, hashes *
 type candidateDecode struct {
 	Text   string
 	Result ldpcResult
+}
+
+// candidateOutcome carries the result of one concurrently analyzed candidate
+// back to the ordered commit phase. Text is intentionally absent: the commit
+// phase re-unpacks the codeword against the live hash table.
+type candidateOutcome struct {
+	refined     refinedCandidate
+	symbolPower [8][ft8Symbols]float64
+	result      ldpcResult
+	ok          bool
+}
+
+func decodeWorkerCount(options decodeOptions, candidates int) int {
+	workers := options.workers
+	if workers <= 0 {
+		workers = runtime.GOMAXPROCS(0)
+	}
+	if workers > candidates {
+		workers = candidates
+	}
+	if workers < 1 {
+		workers = 1
+	}
+	return workers
+}
+
+// decodeCandidatesParallel analyzes candidates concurrently and returns one
+// outcome per candidate, indexed to match. Candidates only read dd (signal
+// subtraction happens after the whole pass commits), so workers race on
+// nothing: each owns a pooled downsampler, a read-only hash-table snapshot,
+// and a private diagnostics accumulator merged after the barrier. Results are
+// bit-identical to the sequential path regardless of scheduling.
+func decodeCandidatesParallel(dd []float32, candidates []candidate, workers int, pass int, hashes *hashTable, options decodeOptions, diagnostics *DecodeDiagnostics) []candidateOutcome {
+	outcomes := make([]candidateOutcome, len(candidates))
+	frozen := hashes.frozenSnapshot()
+	workerDiags := make([]DecodeDiagnostics, workers)
+	var next atomic.Int64
+	var wg sync.WaitGroup
+	for w := 0; w < workers; w++ {
+		wg.Add(1)
+		go func(w int) {
+			defer wg.Done()
+			ds := getDownsampler()
+			defer putDownsampler(ds)
+			var workerDiag *DecodeDiagnostics
+			if diagnostics != nil {
+				workerDiag = &workerDiags[w]
+			}
+			for {
+				i := int(next.Add(1)) - 1
+				if i >= len(candidates) {
+					return
+				}
+				analysis, decoded, ok := decodeCandidateVariantsForMetricSet(dd, ds, candidates[i], false, pass, frozen, options, workerDiag)
+				if !ok {
+					continue
+				}
+				outcomes[i] = candidateOutcome{
+					refined:     analysis.Refined,
+					symbolPower: analysis.SymbolPower,
+					result:      decoded.Result,
+					ok:          true,
+				}
+			}
+		}(w)
+	}
+	wg.Wait()
+	if diagnostics != nil {
+		for i := range workerDiags {
+			diagnostics.merge(&workerDiags[i])
+		}
+	}
+	return outcomes
 }
 
 func decodeCandidateVariantsForMetricSet(dd []float32, ds *downsampler, cand candidate, recompute bool, metricSet int, hashes *hashTable, options decodeOptions, diagnostics *DecodeDiagnostics) (candidateAnalysis, candidateDecode, bool) {

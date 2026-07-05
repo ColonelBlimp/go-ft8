@@ -1,10 +1,10 @@
 // SPDX-FileCopyrightText: 2026 Marc L. Veary (7Q5MLV)
 // SPDX-License-Identifier: GPL-3.0-only
 
-//go:build pocketfft
+//go:build cgo
 
-// Package pfft wraps the vendored PocketFFT C library for optional
-// CGO-backed FFT experiments.
+// Package pfft wraps the vendored PocketFFT C library, the default
+// FFT backend for cgo-enabled builds.
 //
 // Plans are constructed once via NewRealPlan / NewComplexPlan and
 // reused across many same-size transforms. PocketFFT documents plans

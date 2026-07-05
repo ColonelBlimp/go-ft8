@@ -248,57 +248,63 @@ Hint handling is intentionally bounded:
 counters such as `APCallHints`, `APHintProfilesScored`,
 `APHintHypothesesSelected`, and `APHintHypothesesBelowThreshold`.
 
-## Production PocketFFT Backend
+## FFT Backends
 
-The default build uses pure-Go Gonum FFT support for portability. Production
-builds should use the faster CGO PocketFFT backend with the `pocketfft` build
-tag:
+CGO-enabled builds (the Go default for native compilation) use the vendored
+PocketFFT C backend, which is 30-40% faster end-to-end than the pure-Go
+alternative. Builds with `CGO_ENABLED=0` (including most cross-compilation)
+automatically fall back to the pure-Go Gonum backend. To force the pure-Go
+backend in a CGO-enabled build, use the `gonumfft` build tag:
 
 ```sh
-go test -tags pocketfft ./...
+go test -tags gonumfft ./...
 ```
 
-PocketFFT is vendored under `internal/pfft/pocketfft/` and keeps its upstream
-BSD 3-Clause license notices. The pure-Go Gonum backend remains the fallback for
-builds where CGO or vendored C is not acceptable.
+The legacy `pocketfft` build tag is no longer needed: PocketFFT is now the
+default wherever CGO is available. PocketFFT is vendored under
+`internal/pfft/pocketfft/` and keeps its upstream BSD 3-Clause license
+notices.
 
 ## Benchmarks
 
-Reference decode wall-clock benchmarks for version 0.3.0, measured 2026-06-10
-on an Intel Core i3-10100F, Linux amd64, Go 1.26.4-X:nodwarf5, using the
-production PocketFFT backend and the six bundled WAV fixtures:
+Reference decode wall-clock benchmarks for version 0.5.0, measured 2026-07-05
+on an Intel Core i3-10100F (4 cores / 8 threads), Linux amd64, Go 1.26.4,
+using the default PocketFFT backend, concurrent candidate analysis, and the
+six bundled WAV fixtures:
 
 ```sh
-GOCACHE=/tmp/go-build go test -tags pocketfft ./ft8 -run=^$ \
+GOCACHE=/tmp/go-build go test ./ft8 -run=^$ \
   -bench='BenchmarkDecode(Messages|Structured).*PerFixture' \
   -benchmem -benchtime=1x -count=1
 ```
 
 | Benchmark | Mean per 15s slot | Observed fixture range |
 | --------- | ----------------- | ---------------------- |
-| Strict `DecodeMessages` | 0.586 s | 0.540-0.678 s |
-| Deep without broad AP | 3.20 s | 2.71-3.73 s |
-| Deep `DecodeMessagesWithOptions(DeepDecoderOptions())` | 4.05 s | 3.39-4.70 s |
-| Deep with 200 AP call hints | 4.08 s | 3.47-4.70 s |
-| Structured strict+deep `DecodeStructured(...IncludeDeep)` | 4.56 s | 3.95-5.20 s |
+| Strict `DecodeMessages` | 0.448 s | 0.377-0.553 s |
+| Deep without broad AP | 1.81 s | 1.69-2.15 s |
+| Deep `DecodeMessagesWithOptions(DeepDecoderOptions())` | 1.89 s | 1.75-2.16 s |
+| Deep with 200 AP call hints | 1.94 s | 1.71-2.26 s |
+| Structured strict+deep `DecodeStructured(...IncludeDeep)` | 2.32 s | 2.13-2.78 s |
+
+Candidate analysis runs concurrently across all available CPUs by default and
+produces output identical to the sequential path; set
+`DecoderOptions.Workers = 1` to force sequential decoding, or a higher value
+to cap the goroutine count. For comparison, the equivalent 0.3.0 numbers on
+the same machine were 0.586 s strict and 4.05 s deep.
 
 The profiling refresh used the same benchmark set with CPU and memory profiles:
 
 ```sh
-GOCACHE=/tmp/go-build go test -tags pocketfft ./ft8 -run=^$ \
+GOCACHE=/tmp/go-build go test ./ft8 -run=^$ \
   -bench='BenchmarkDecode(Messages|Structured).*PerFixture' \
   -benchmem -benchtime=1x -count=1 \
   -cpuprofile=/tmp/go-ft8-cpu.prof -memprofile=/tmp/go-ft8-mem.prof
 ```
 
 CPU samples were concentrated in PocketFFT CGO calls and LDPC/OSD decoding:
-`runtime.cgocall` 24.9% flat, `osd17491` 19.9%, `math.archExp` 10.6%,
-`decode17491BP` 8.3%, `math.tanh` 5.8%, `math.Sincos` 5.4%, and
-`subtractFT8` 3.9% flat / 34.7% cumulative. Allocation samples were dominated
-by startup tables and decode scratch space: `init.func5` 39.0% alloc_space,
-`newFT8SpectraScratch` 24.9%, `(*ft8SpectraScratch).ensureFinder` 12.8%,
-`(*downsampler).downsample` 6.3%, `newRealFFTPlan` 6.1%, and
-`(*realFFTPlan).coefficientsRange` 5.7%.
+`runtime.cgocall` 34.1% flat, `osd17491` 14.7% flat / 21.7% cumulative,
+`decode17491BP` 13.6% flat / 19.4% cumulative, `math.Sincos` 4.3%,
+`syncSum` 3.8%, and `subtractFT8` 3.1% flat / 25.9% cumulative.
 
 These numbers are local reference measurements, not performance guarantees.
 Wall time varies with CPU, CGO toolchain, OS scheduling, fixture content, and
