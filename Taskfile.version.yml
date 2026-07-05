@@ -107,7 +107,7 @@ tasks:
         sh: cat {{.VERSION_FILE}}
     cmds:
       - task test:smoke
-      - task test:smoke-prod
+      - task test:smoke-gonum
       - |
         if [ -n "$(git status --porcelain)" ]; then
           echo "Working tree must be clean before tagging v{{.VERSION}}"

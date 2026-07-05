@@ -22,14 +22,14 @@ tasks:
       - go test ./... -run 'TestCRC14FastMatchesSlow|TestPackEncodeRoundTripsStandardMessages|TestEncodeStandardMessage|TestDecodeMessagesWithReportEmptyInputDiagnostics|TestDecodeMessagesCheckedRejectsInvalidInput|TestDecodeStructuredCheckedRejectsInvalidInput|TestDecodeOptions'
 
   test:gonum:
-    desc: Run the full test suite with the pure-Go Gonum FFT backend.
+    desc: Run the full test suite with the pure-Go Gonum FFT backend (CGO disabled).
     cmds:
-      - go test -tags gonumfft ./...
+      - CGO_ENABLED=0 go test ./...
 
   test:smoke-gonum:
-    desc: Run smoke tests with the pure-Go Gonum FFT backend.
+    desc: Run smoke tests with the pure-Go Gonum FFT backend (CGO disabled).
     cmds:
-      - go test -tags gonumfft ./... -run 'TestCRC14FastMatchesSlow|TestPackEncodeRoundTripsStandardMessages|TestEncodeStandardMessage|TestDecodeMessagesWithReportEmptyInputDiagnostics|TestDecodeMessagesCheckedRejectsInvalidInput|TestDecodeStructuredCheckedRejectsInvalidInput|TestDecodeOptions'
+      - CGO_ENABLED=0 go test ./... -run 'TestCRC14FastMatchesSlow|TestPackEncodeRoundTripsStandardMessages|TestEncodeStandardMessage|TestDecodeMessagesWithReportEmptyInputDiagnostics|TestDecodeMessagesCheckedRejectsInvalidInput|TestDecodeStructuredCheckedRejectsInvalidInput|TestDecodeOptions'
 
   test:race:
     desc: Run race detector smoke tests for the FT8 package.
@@ -39,6 +39,8 @@ tasks:
   test:race-gonum:
     desc: Run FT8 race detector smoke tests with the pure-Go Gonum FFT backend.
     cmds:
+      # -race itself requires CGO, so the Gonum backend is selected via the
+      # gonumfft tag here instead of CGO_ENABLED=0.
       - go test -race -tags gonumfft ./ft8 -run 'TestStatelessDecodeConcurrentNoRace|TestDecodeMessagesCheckedRejectsInvalidInput|TestDecodeStructuredCheckedRejectsInvalidInput|FuzzDecodePublicAPIsNoPanic'
 
   bench:strict:

@@ -119,15 +119,17 @@ func osd17491(rx *[174]float64, channel *[174]float64, apmask *[174]int8) (ldpcR
 		}
 	}
 
+	// Match WSJT-X OSD's bounded pivot search window. For the (174,91)
+	// code k+20 < n always holds; the guard breaks the build if the
+	// dimensions ever change to violate that.
+	const pivotLimit = k + 20
+	const _ = uint(n - pivotLimit)
+
 	for diag := 0; diag < k; diag++ {
 		pivot := -1
-		limit := k + 20
-		if limit > n {
-			limit = n
-		}
-		// Match WSJT-X OSD's bounded pivot search. If the MRB basis cannot be
-		// diagonalized within this window, abandon this OSD attempt.
-		for col := diag; col < limit; col++ {
+		// If the MRB basis cannot be diagonalized within this window,
+		// abandon this OSD attempt.
+		for col := diag; col < pivotLimit; col++ {
 			if osdBitSet(&genmrb[diag], col) {
 				pivot = col
 				break
@@ -364,11 +366,11 @@ func ldpcGeneratorMatrix() [83][91]int8 {
 	for row, hexRow := range ldpcGeneratorHex {
 		for h := 0; h < len(hexRow); h++ {
 			v := hexValue(hexRow[h])
-			bits := 4
+			nibbleBits := 4
 			if h == len(hexRow)-1 {
-				bits = 3
+				nibbleBits = 3
 			}
-			for b := 0; b < bits; b++ {
+			for b := 0; b < nibbleBits; b++ {
 				col := h*4 + b
 				if col >= 91 {
 					break

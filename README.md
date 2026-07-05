@@ -313,30 +313,38 @@ decode options.
 ## Development
 
 This repository uses [Task](https://taskfile.dev/) for common development
-commands. Run the production test path with:
+commands. Run the full test suite with the default backend (PocketFFT when
+CGO is available):
 
 ```sh
-task test:prod
+task test
 ```
 
-Run production decode benchmarks with:
+Run the pure-Go Gonum fallback suite (CGO disabled):
 
 ```sh
-task bench:prod
-task bench:structured-deep-prod
+task test:gonum
+```
+
+Run decode benchmarks with:
+
+```sh
+task bench
+task bench:structured-deep
 ```
 
 Run the fixture-independent smoke tests:
 
 ```sh
 task test:smoke
+task test:smoke-gonum
 ```
 
 Run race-detector smoke tests:
 
 ```sh
 task test:race
-task test:race-prod
+task test:race-gonum
 ```
 
 The package version is tracked in `version.txt` as Go module SemVer without a

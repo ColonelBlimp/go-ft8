@@ -26,8 +26,9 @@ the response.
 This repository uses Task:
 
 - `task test:smoke`
-- `task test:smoke-prod`
-- `task test:race-prod`
+- `task test:smoke-gonum`
+- `task test:race`
+- `task test:race-gonum`
 - `task version:get`
 - `task version:tag`
 - `task version:push-tag`

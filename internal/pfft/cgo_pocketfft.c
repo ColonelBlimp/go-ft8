@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Marc L. Veary (7Q5MLV)
 // SPDX-License-Identifier: GPL-3.0-only
 
-//go:build cgo
+//go:build cgo && !gonumfft
 
 /*
  * CGO compilation unit for PocketFFT.

@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Marc L. Veary (7Q5MLV)
 // SPDX-License-Identifier: GPL-3.0-only
 
-//go:build cgo
+//go:build cgo && !gonumfft
 
 // Package pfft wraps the vendored PocketFFT C library, the default
 // FFT backend for cgo-enabled builds.
@@ -10,8 +10,9 @@
 // reused across many same-size transforms. PocketFFT documents plans
 // as thread-safe for concurrent invocation (read-only after creation;
 // scratch is allocated per call). Plans hold C-allocated memory and
-// MUST be released via Close — a runtime finalizer is set as a
-// safety net but explicit Close is the documented pattern.
+// MUST be released via Close — a runtime.AddCleanup cleanup is
+// registered as a safety net but explicit Close is the documented
+// pattern.
 //
 // Provenance: pocketfft/ contains a verbatim copy of upstream
 // commit 81d171a6 (2019-05-10) from
@@ -36,8 +37,9 @@ import (
 // Output of Forward is in FFTPack packed real-FFT layout; use Bin to
 // extract individual frequency-domain values.
 type RealPlan struct {
-	plan C.rfft_plan
-	n    int
+	plan    C.rfft_plan
+	n       int
+	cleanup runtime.Cleanup
 }
 
 // NewRealPlan builds a PocketFFT plan for in-place real-to-half-complex
@@ -54,7 +56,11 @@ func NewRealPlan(n int) (*RealPlan, error) {
 		return nil, fmt.Errorf("pfft: make_rfft_plan(%d) returned nil", n)
 	}
 	p := &RealPlan{plan: plan, n: n}
-	runtime.SetFinalizer(p, (*RealPlan).Close)
+	// The cleanup receives the C pointer, never p itself, so it cannot
+	// keep the Go object alive.
+	p.cleanup = runtime.AddCleanup(p, func(plan C.rfft_plan) {
+		C.destroy_rfft_plan(plan)
+	}, plan)
 	return p, nil
 }
 
@@ -62,6 +68,7 @@ func NewRealPlan(n int) (*RealPlan, error) {
 // times. After Close, Forward and Backward will panic.
 func (p *RealPlan) Close() {
 	if p.plan != nil {
+		p.cleanup.Stop()
 		C.destroy_rfft_plan(p.plan)
 		p.plan = nil
 	}
@@ -78,6 +85,9 @@ func (p *RealPlan) Forward(x []float64) error {
 		return fmt.Errorf("pfft: RealPlan.Forward expected length %d, got %d", p.n, len(x))
 	}
 	rc := C.rfft_forward(p.plan, (*C.double)(unsafe.Pointer(&x[0])), C.double(1.0))
+	// Keep p reachable through the C call so its cleanup cannot destroy
+	// the plan mid-transform.
+	runtime.KeepAlive(p)
 	runtime.KeepAlive(x)
 	if rc != 0 {
 		return fmt.Errorf("pfft: rfft_forward returned %d", int(rc))
@@ -95,6 +105,7 @@ func (p *RealPlan) Backward(x []float64) error {
 		return fmt.Errorf("pfft: RealPlan.Backward expected length %d, got %d", p.n, len(x))
 	}
 	rc := C.rfft_backward(p.plan, (*C.double)(unsafe.Pointer(&x[0])), C.double(1.0))
+	runtime.KeepAlive(p)
 	runtime.KeepAlive(x)
 	if rc != 0 {
 		return fmt.Errorf("pfft: rfft_backward returned %d", int(rc))
@@ -128,8 +139,9 @@ func (p *RealPlan) Bin(out []float64, k int) complex128 {
 // memory representation, so we pass []complex128 slices directly to
 // the C side with no marshalling.
 type ComplexPlan struct {
-	plan C.cfft_plan
-	n    int
+	plan    C.cfft_plan
+	n       int
+	cleanup runtime.Cleanup
 }
 
 // NewComplexPlan builds a PocketFFT plan for in-place complex-to-
@@ -143,7 +155,11 @@ func NewComplexPlan(n int) (*ComplexPlan, error) {
 		return nil, fmt.Errorf("pfft: make_cfft_plan(%d) returned nil", n)
 	}
 	p := &ComplexPlan{plan: plan, n: n}
-	runtime.SetFinalizer(p, (*ComplexPlan).Close)
+	// The cleanup receives the C pointer, never p itself, so it cannot
+	// keep the Go object alive.
+	p.cleanup = runtime.AddCleanup(p, func(plan C.cfft_plan) {
+		C.destroy_cfft_plan(plan)
+	}, plan)
 	return p, nil
 }
 
@@ -151,6 +167,7 @@ func NewComplexPlan(n int) (*ComplexPlan, error) {
 // times. After Close, Forward and Backward will panic.
 func (p *ComplexPlan) Close() {
 	if p.plan != nil {
+		p.cleanup.Stop()
 		C.destroy_cfft_plan(p.plan)
 		p.plan = nil
 	}
@@ -166,6 +183,7 @@ func (p *ComplexPlan) Forward(x []complex128) error {
 		return fmt.Errorf("pfft: ComplexPlan.Forward expected length %d, got %d", p.n, len(x))
 	}
 	rc := C.cfft_forward(p.plan, (*C.double)(unsafe.Pointer(&x[0])), C.double(1.0))
+	runtime.KeepAlive(p)
 	runtime.KeepAlive(x)
 	if rc != 0 {
 		return fmt.Errorf("pfft: cfft_forward returned %d", int(rc))
@@ -180,6 +198,7 @@ func (p *ComplexPlan) Backward(x []complex128) error {
 		return fmt.Errorf("pfft: ComplexPlan.Backward expected length %d, got %d", p.n, len(x))
 	}
 	rc := C.cfft_backward(p.plan, (*C.double)(unsafe.Pointer(&x[0])), C.double(1.0))
+	runtime.KeepAlive(p)
 	runtime.KeepAlive(x)
 	if rc != 0 {
 		return fmt.Errorf("pfft: cfft_backward returned %d", int(rc))
