@@ -267,7 +267,7 @@ notices.
 
 ## Benchmarks
 
-Reference decode wall-clock benchmarks for version 0.5.0, measured 2026-07-05
+Reference decode wall-clock benchmarks for version 0.6.0, measured 2026-07-05
 on an Intel Core i3-10100F (4 cores / 8 threads), Linux amd64, Go 1.26.4,
 using the default PocketFFT backend, concurrent candidate analysis, and the
 six bundled WAV fixtures:
