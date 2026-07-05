@@ -19,6 +19,7 @@ func TestPackEncodeRoundTripsStandardMessages(t *testing.T) {
 		"PA3XYZ/P GM4ABC/P R JO22",
 		"CQ G4ABC/P IO91",
 		"CQ TEST G4ABC/P IO91",
+		"CQ PJ4/NA2AA",
 	}
 
 	for _, test := range tests {
@@ -37,6 +38,51 @@ func TestPackEncodeRoundTripsStandardMessages(t *testing.T) {
 			}
 			if got != test {
 				t.Fatalf("round trip got %q, want %q", got, test)
+			}
+		})
+	}
+}
+
+func TestPackEncodeType4CompoundMessages(t *testing.T) {
+	tests := []struct {
+		text string
+		want string
+		nrpt int
+		icq  int
+	}{
+		{text: "CQ PJ4/NA2AA", want: "CQ PJ4/NA2AA", nrpt: 0, icq: 1},
+		{text: "<K1ABC> PJ4/NA2AA", want: "<...> PJ4/NA2AA", nrpt: 0, icq: 0},
+		{text: "PJ4/NA2AA <K1ABC> RRR", want: "PJ4/NA2AA <...> RRR", nrpt: 1, icq: 0},
+		{text: "K1ABC PJ4/NA2AA RR73", want: "<...> PJ4/NA2AA RR73", nrpt: 2, icq: 0},
+		{text: "PJ4/NA2AA K1ABC 73", want: "PJ4/NA2AA <...> 73", nrpt: 3, icq: 0},
+	}
+
+	for _, test := range tests {
+		t.Run(test.text, func(t *testing.T) {
+			bits, ok := pack77StandardMessage(test.text)
+			if !ok {
+				t.Fatalf("pack failed")
+			}
+			if got := readBits(bits[:], 71, 2); got != test.nrpt {
+				t.Fatalf("nrpt got %d, want %d", got, test.nrpt)
+			}
+			if got := readBits(bits[:], 73, 1); got != test.icq {
+				t.Fatalf("icq got %d, want %d", got, test.icq)
+			}
+			if got := readBits(bits[:], 74, 3); got != 4 {
+				t.Fatalf("i3 got %d, want 4", got)
+			}
+
+			cw := encode17491(bits)
+			if !crc14OK(&cw) {
+				t.Fatalf("encoded codeword failed CRC")
+			}
+			got, ok := unpack77FromCodeword(cw)
+			if !ok {
+				t.Fatalf("unpack failed")
+			}
+			if got != test.want {
+				t.Fatalf("round trip got %q, want %q", got, test.want)
 			}
 		})
 	}

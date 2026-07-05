@@ -2,7 +2,7 @@
 <project version="4">
   <component name="ProjectModuleManager">
     <modules>
-      <module fileurl="file://$PROJECT_DIR$/.idea/research.iml" filepath="$PROJECT_DIR$/.idea/research.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/go-ft8.iml" filepath="$PROJECT_DIR$/.idea/go-ft8.iml" />
     </modules>
   </component>
 </project>

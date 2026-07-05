@@ -29,6 +29,9 @@ func TestEncodeStandardMessageRoundTrips(t *testing.T) {
 		{name: "portableDirectedCQ", in: "cq test g4abc/p io91", want: "CQ TEST G4ABC/P IO91"},
 		{name: "fieldDayExchange", in: "k1abc   w9xyz   6a   wi", want: "K1ABC W9XYZ 6A WI"},
 		{name: "fieldDayResponseExchange", in: "w9xyz k1abc r 2b ema", want: "W9XYZ K1ABC R 2B EMA"},
+		{name: "compoundCQ", in: "cq pj4/na2aa", want: "CQ PJ4/NA2AA"},
+		{name: "compoundHashedOther", in: "k1abc pj4/na2aa rr73", want: "<...> PJ4/NA2AA RR73"},
+		{name: "compoundFirst", in: "pj4/na2aa k1abc 73", want: "PJ4/NA2AA <...> 73"},
 	}
 
 	for _, test := range tests {

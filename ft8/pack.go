@@ -13,6 +13,9 @@ func pack77StandardMessage(msg string) ([77]int8, bool) {
 	if bits, ok := pack77ARRLFieldDayMessage(fields); ok {
 		return bits, true
 	}
+	if bits, ok := pack77Type4CompoundMessage(fields); ok {
+		return bits, true
+	}
 	if len(fields) >= 3 && fields[0] == "CQ" {
 		if _, _, ok := pack28WithPortable(fields[2]); ok {
 			normalized := make([]string, 0, len(fields)-1)
@@ -73,6 +76,112 @@ func pack77StandardMessage(msg string) ([77]int8, bool) {
 	writeBits(out[:], 59, 15, igrid4)
 	writeBits(out[:], 74, 3, i3)
 	return out, true
+}
+
+func pack77Type4CompoundMessage(fields []string) ([77]int8, bool) {
+	var out [77]int8
+	if len(fields) == 2 && fields[0] == "CQ" {
+		n58, ok := packBase38Call(fields[1])
+		if !ok || !isCompoundCall(fields[1]) {
+			return out, false
+		}
+		writeBits64(out[:], 12, 58, n58)
+		writeBits(out[:], 73, 1, 1)
+		writeBits(out[:], 74, 3, 4)
+		return out, true
+	}
+
+	if len(fields) < 2 || len(fields) > 3 {
+		return out, false
+	}
+	nrpt := 0
+	if len(fields) == 3 {
+		switch fields[2] {
+		case "RRR":
+			nrpt = 1
+		case "RR73":
+			nrpt = 2
+		case "73":
+			nrpt = 3
+		default:
+			return out, false
+		}
+	}
+
+	firstCompound := isCompoundCall(fields[0])
+	secondCompound := isCompoundCall(fields[1])
+	if firstCompound == secondCompound {
+		return out, false
+	}
+
+	compound := fields[1]
+	hashCallText := fields[0]
+	iflip := 0
+	if firstCompound {
+		compound = fields[0]
+		hashCallText = fields[1]
+		iflip = 1
+	}
+
+	n58, ok := packBase38Call(compound)
+	if !ok {
+		return out, false
+	}
+	hashCallText, ok = normalizeHashCallToken(hashCallText)
+	if !ok {
+		return out, false
+	}
+
+	writeBits(out[:], 0, 12, hashCall(hashCallText, 12))
+	writeBits64(out[:], 12, 58, n58)
+	writeBits(out[:], 70, 1, iflip)
+	writeBits(out[:], 71, 2, nrpt)
+	writeBits(out[:], 74, 3, 4)
+	return out, true
+}
+
+func packBase38Call(call string) (uint64, bool) {
+	const alphabet = " 0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ/"
+	call = strings.ToUpper(strings.TrimSpace(call))
+	if call == "" || len(call) > 11 {
+		return 0, false
+	}
+	call += strings.Repeat(" ", 11-len(call))
+	var n uint64
+	for i := 0; i < 11; i++ {
+		idx := strings.IndexByte(alphabet, call[i])
+		if idx < 0 {
+			return 0, false
+		}
+		n = 38*n + uint64(idx)
+	}
+	return n, true
+}
+
+func isCompoundCall(call string) bool {
+	call = strings.ToUpper(strings.TrimSpace(call))
+	if !strings.Contains(call, "/") {
+		return false
+	}
+	if strings.HasSuffix(call, "/P") || strings.HasSuffix(call, "/R") {
+		return false
+	}
+	_, ok := packBase38Call(call)
+	return ok
+}
+
+func normalizeHashCallToken(call string) (string, bool) {
+	call = strings.ToUpper(strings.TrimSpace(call))
+	if len(call) >= 2 && call[0] == '<' && call[len(call)-1] == '>' {
+		call = strings.TrimSpace(call[1 : len(call)-1])
+	}
+	if call == "" || call == "..." || strings.Contains(call, "<") || strings.Contains(call, ">") {
+		return "", false
+	}
+	if _, ok := packBase38Call(call); !ok {
+		return "", false
+	}
+	return call, true
 }
 
 func pack28WithPortable(call string) (int, int, bool) {
@@ -324,6 +433,13 @@ func allLetters(s string) bool {
 }
 
 func writeBits(bits []int8, start int, width int, value int) {
+	for i := 0; i < width; i++ {
+		shift := uint(width - 1 - i)
+		bits[start+i] = int8((value >> shift) & 1)
+	}
+}
+
+func writeBits64(bits []int8, start int, width int, value uint64) {
 	for i := 0; i < width; i++ {
 		shift := uint(width - 1 - i)
 		bits[start+i] = int8((value >> shift) & 1)
