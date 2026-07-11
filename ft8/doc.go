@@ -33,7 +33,13 @@
 //
 // EncodeStandardMessage exposes the protocol encoder for supported standard
 // FT8 messages, including /P and /R suffix forms, ARRL Field Day exchanges, and
-// type 4 compound/nonstandard calls. The package deliberately does not handle
+// type 4 compound/nonstandard calls. Type 4 follows WSJT-X pack77_4: the CQ
+// form accepts any nonstandard call of 5-11 base-38 characters, and in the
+// two-call form a <bracketed> call is sent as a 12-bit hash while the other
+// call is spelled verbatim, preserving affixes such as /P. Unbracketed
+// compound+standard pairs deviate deliberately from WSJT-X by keeping the
+// full compound call (WSJT-X drops the prefix), and inputs WSJT-X would
+// encode lossily are rejected. The package deliberately does not handle
 // audio device output, transmit scheduling, PTT, or radio control.
 //
 // The decode pipeline deliberately keeps scale handling localized:

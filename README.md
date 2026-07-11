@@ -123,8 +123,8 @@ invalid option field.
 
 Encode supported standard FT8 messages, including standard `/P` and `/R`
 suffix forms, ARRL Field Day exchanges, and compound/nonstandard calls such as
-`CQ PJ4/NA2AA` or `CQ YW18FIFA`, to protocol bits, LDPC codeword, and tone
-sequence:
+`CQ PJ4/NA2AA`, `CQ YW18FIFA/P`, or `<W9XYZ> K1ABC/P`, to protocol bits, LDPC
+codeword, and tone sequence:
 
 ```go
 encoded, err := ft8.EncodeStandardMessage("CQ K1ABC FN42")
