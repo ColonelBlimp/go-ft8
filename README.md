@@ -137,7 +137,17 @@ fmt.Println(encoded.Text, encoded.Tones)
 
 For compound-call QSO messages, the non-compound counterpart is encoded as a
 12-bit hash. Stateless round-trips therefore render that counterpart as
-`<...>` unless decoder hash history can resolve it.
+`<...>` unless decoder hash history can resolve it. Bracketed hash tokens are
+accepted on the encode side as well: `<W9XYZ> K1ABC/P` hashes the bracketed
+call and spells the other verbatim in the 58-bit field, exactly as WSJT-X
+`pack77_4` does, so `/P`, `/R`, and other affixes survive on the air.
+
+Two deliberate deviations from WSJT-X `pack77`: an unbracketed
+compound+standard pair such as `PJ4/K1ABC W9XYZ RRR` is packed as type 4 with
+the full compound call preserved (WSJT-X silently drops the prefix and packs
+type 1), and messages WSJT-X would encode lossily — `CQ YW18FIFA GG66` (grid
+dropped) or mixed `/R`+`/P` suffixes (the `/R` becomes `/P`) — are rejected
+instead of altered.
 
 Applications can discover and validate the ARRL/RAC Field Day sections accepted
 by the encoder:

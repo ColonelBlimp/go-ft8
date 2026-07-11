@@ -96,6 +96,121 @@ func TestPackEncodeType4NonstandardMessages(t *testing.T) {
 	}
 }
 
+// TestPackEncodeType4WSJTXTestMessages covers the type-4 subset of the
+// official WSJT-X test corpus (lib/ft8/ft8_testmsg.f90). With the hash
+// table primed, each message must round trip verbatim.
+func TestPackEncodeType4WSJTXTestMessages(t *testing.T) {
+	tests := []struct {
+		text  string
+		icq   int
+		iflip int
+		nrpt  int
+	}{
+		{text: "CQ KH1/KH7Z", icq: 1},
+		{text: "CQ PJ4/K1ABC", icq: 1},
+		{text: "PJ4/K1ABC <W9XYZ>", iflip: 1},
+		{text: "<W9XYZ> PJ4/K1ABC RRR", nrpt: 1},
+		{text: "PJ4/K1ABC <W9XYZ> 73", iflip: 1, nrpt: 3},
+		{text: "<W9XYZ> YW18FIFA"},
+		{text: "YW18FIFA <W9XYZ> RRR", iflip: 1, nrpt: 1},
+		{text: "<W9XYZ> YW18FIFA 73", nrpt: 3},
+		{text: "CQ YW18FIFA", icq: 1},
+		{text: "<KA1ABC> YW18FIFA RR73", nrpt: 2},
+	}
+
+	for _, test := range tests {
+		t.Run(test.text, func(t *testing.T) {
+			bits, ok := pack77StandardMessage(test.text)
+			if !ok {
+				t.Fatalf("pack failed")
+			}
+			if got := readBits(bits[:], 74, 3); got != 4 {
+				t.Fatalf("i3 got %d, want 4", got)
+			}
+			if got := readBits(bits[:], 73, 1); got != test.icq {
+				t.Fatalf("icq got %d, want %d", got, test.icq)
+			}
+			if got := readBits(bits[:], 70, 1); got != test.iflip {
+				t.Fatalf("iflip got %d, want %d", got, test.iflip)
+			}
+			if got := readBits(bits[:], 71, 2); got != test.nrpt {
+				t.Fatalf("nrpt got %d, want %d", got, test.nrpt)
+			}
+
+			hashes := &hashTable{}
+			hashes.Save("W9XYZ")
+			hashes.Save("KA1ABC")
+			cw := encode17491(bits)
+			got, ok := unpack77FromCodewordWithHashes(cw, hashes)
+			if !ok {
+				t.Fatalf("unpack failed")
+			}
+			if got != test.text {
+				t.Fatalf("round trip got %q, want %q", got, test.text)
+			}
+		})
+	}
+}
+
+// TestPackType4AcceptsWSJTXCompatibleCalls locks in nonstandard-call forms
+// that WSJT-X pack77_4/chkcall accept: the CQ path validates only length,
+// a bracketed partner allows any spelled call (suffixed standard calls,
+// all-letter calls, reserved-token prefixes), and compound affixes may be
+// up to 6 characters.
+func TestPackType4AcceptsWSJTXCompatibleCalls(t *testing.T) {
+	tests := []struct {
+		text  string
+		want  string
+		c58   string
+		icq   int
+		iflip int
+	}{
+		{text: "CQ YW18FIFA/P", want: "CQ YW18FIFA/P", c58: " YW18FIFA/P", icq: 1},
+		{text: "CQ R/KL7ABC", want: "CQ R/KL7ABC", c58: "   R/KL7ABC", icq: 1},
+		{text: "CQ MUSEUM", want: "CQ MUSEUM", c58: "     MUSEUM", icq: 1},
+		{text: "CQ MOBIL/K1ABC", want: "CQ MOBIL/K1ABC", c58: "MOBIL/K1ABC", icq: 1},
+		{text: "<W9XYZ> K1ABC/P", want: "<...> K1ABC/P", c58: "    K1ABC/P"},
+		{text: "K1ABC/P <W9XYZ>", want: "K1ABC/P <...>", c58: "    K1ABC/P", iflip: 1},
+		{text: "<W9XYZ> R/KL7ABC RR73", want: "<...> R/KL7ABC RR73", c58: "   R/KL7ABC"},
+		{text: "<W9XYZ> MUSEUM", want: "<...> MUSEUM", c58: "     MUSEUM"},
+		{text: "R/KL7ABC W9XYZ", want: "R/KL7ABC <...>", c58: "   R/KL7ABC", iflip: 1},
+		{text: "W9XYZ K1ABC/MOBIL 73", want: "<...> K1ABC/MOBIL 73", c58: "K1ABC/MOBIL"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.text, func(t *testing.T) {
+			bits, ok := pack77StandardMessage(test.text)
+			if !ok {
+				t.Fatalf("pack failed")
+			}
+			if got := readBits(bits[:], 74, 3); got != 4 {
+				t.Fatalf("i3 got %d, want 4", got)
+			}
+			if got := readBits(bits[:], 73, 1); got != test.icq {
+				t.Fatalf("icq got %d, want %d", got, test.icq)
+			}
+			if got := readBits(bits[:], 70, 1); got != test.iflip {
+				t.Fatalf("iflip got %d, want %d", got, test.iflip)
+			}
+			if got, want := readBits64(bits[:], 12, 58), base38TestValue(t, test.c58); got != want {
+				t.Fatalf("c58 got %d, want %d (%q)", got, want, test.c58)
+			}
+
+			cw := encode17491(bits)
+			if !crc14OK(&cw) {
+				t.Fatalf("encoded codeword failed CRC")
+			}
+			got, ok := unpack77FromCodeword(cw)
+			if !ok {
+				t.Fatalf("unpack failed")
+			}
+			if got != test.want {
+				t.Fatalf("round trip got %q, want %q", got, test.want)
+			}
+		})
+	}
+}
+
 func TestPackType4CallRightAlignsC58(t *testing.T) {
 	bits, ok := pack77StandardMessage("CQ PJ4/NA2AA")
 	if !ok {
@@ -125,6 +240,17 @@ func TestPackRejectsInvalidType4Messages(t *testing.T) {
 		"QRZ PJ4/NA2AA",
 		"RRR PJ4/NA2AA",
 		"K1ABC/R W9XYZ/P RR73",
+		// Deliberate deviations from WSJT-X, which encodes these by
+		// silently dropping or corrupting part of the message (grid
+		// dropped; /R turned into /P; extra word dropped).
+		"CQ YW18FIFA GG66",
+		"CQ YW18FIFA RRR",
+		// WSJT-X sends a bare standard call opposite a bracketed hash
+		// as type 1 with a 22-bit hash, which this packer does not
+		// support yet; encoding it as type 4 would deviate on the air.
+		"<W9XYZ> K1ABC",
+		"<W9XYZ> <K1ABC>",
+		"CQ ABCD",
 	}
 	for _, test := range tests {
 		t.Run(test, func(t *testing.T) {

@@ -123,22 +123,51 @@ func pack77Type4CompoundMessage(fields []string) ([77]int8, bool) {
 		}
 	}
 
-	n58a, firstType4 := packType4Call(fields[0], false)
-	n58b, secondType4 := packType4Call(fields[1], false)
-	if firstType4 == secondType4 {
+	// WSJT-X pack77_4 hashes a <bracketed> call unconditionally and spells
+	// the other call in c58 with no structural checks; pack77_1 routes
+	// bracket+slash pairs here precisely so suffixed calls like K1ABC/P
+	// keep their suffix on the air. Without brackets exactly one call must
+	// look nonstandard; unlike WSJT-X pack77_1 (which drops the prefix and
+	// packs type 1) the full call is kept in c58, matching ft8_lib.
+	bracketedFirst := isBracketedToken(fields[0])
+	bracketedSecond := isBracketedToken(fields[1])
+	var hashCallText, spelled string
+	iflip := 0
+	switch {
+	case bracketedFirst && bracketedSecond:
+		return out, false
+	case bracketedFirst:
+		hashCallText, spelled = fields[0], fields[1]
+	case bracketedSecond:
+		hashCallText, spelled = fields[1], fields[0]
+		iflip = 1
+	default:
+		firstType4 := type4CallOK(fields[0], false)
+		secondType4 := type4CallOK(fields[1], false)
+		if firstType4 == secondType4 {
+			return out, false
+		}
+		if firstType4 {
+			hashCallText, spelled = fields[1], fields[0]
+			iflip = 1
+		} else {
+			hashCallText, spelled = fields[0], fields[1]
+		}
+		// Without brackets the hashed side must be a standard call;
+		// brackets assert the call is already known to receivers.
+		if _, _, _, ok := pack28WithSuffix(hashCallText); !ok {
+			return out, false
+		}
+	}
+
+	if !type4SpelledCallOK(spelled) {
 		return out, false
 	}
-
-	n58 := n58b
-	hashCallText := fields[0]
-	iflip := 0
-	if firstType4 {
-		n58 = n58a
-		hashCallText = fields[1]
-		iflip = 1
+	n58, ok := packBase38Call(spelled)
+	if !ok {
+		return out, false
 	}
-
-	hashCallText, ok := normalizeHashCallToken(hashCallText)
+	hashCallText, ok = normalizeHashCallToken(hashCallText)
 	if !ok {
 		return out, false
 	}
@@ -190,6 +219,12 @@ func type4CallOK(call string, cq bool) bool {
 	if !base38TextOK(call) {
 		return false
 	}
+	if cq {
+		// WSJT-X pack77_4 applies no structural checks to a CQ'd
+		// nonstandard call beyond its length, so "CQ YW18FIFA/P" and
+		// "CQ MUSEUM" are valid.
+		return true
+	}
 	if strings.Contains(call, "/") {
 		return slashCallOK(call)
 	}
@@ -197,6 +232,24 @@ func type4CallOK(call string, cq bool) bool {
 		return false
 	}
 	return hasLetter(call) && hasDigit(call)
+}
+
+// type4SpelledCallOK validates the call spelled out in c58 of a hashed-pair
+// type-4 message. WSJT-X pack77_4 spells it with no structural checks, so
+// only base-38 encodability and hash-table sanity apply. A bare standard
+// call is still rejected: WSJT-X sends those as type 1.
+func type4SpelledCallOK(call string) bool {
+	if len(call) < 3 || len(call) > 11 || isReservedCallToken(call) || !base38TextOK(call) {
+		return false
+	}
+	if _, ok := pack28(call); ok {
+		return false
+	}
+	return true
+}
+
+func isBracketedToken(s string) bool {
+	return len(s) >= 2 && s[0] == '<' && s[len(s)-1] == '>'
 }
 
 func slashCallOK(call string) bool {
@@ -210,8 +263,11 @@ func slashCallOK(call string) bool {
 	return callOK(parts[1]) && callAffixOK(parts[0])
 }
 
+// callAffixOK mirrors WSJT-X chkcall, which allows either side of a
+// compound call up to 6 characters with no reserved-token screening
+// ("R/KL7ABC" carries a legitimate Russian temporary prefix).
 func callAffixOK(s string) bool {
-	if len(s) < 1 || len(s) > 4 || isReservedCallToken(s) {
+	if len(s) < 1 || len(s) > 6 {
 		return false
 	}
 	for i := range s {
@@ -219,7 +275,7 @@ func callAffixOK(s string) bool {
 			return false
 		}
 	}
-	return hasLetter(s) || hasDigit(s)
+	return true
 }
 
 func base38TextOK(s string) bool {
@@ -263,17 +319,13 @@ func hasDigit(s string) bool {
 
 func normalizeHashCallToken(call string) (string, bool) {
 	call = strings.ToUpper(strings.TrimSpace(call))
-	if len(call) >= 2 && call[0] == '<' && call[len(call)-1] == '>' {
+	if isBracketedToken(call) {
 		call = strings.TrimSpace(call[1 : len(call)-1])
 	}
+	// Mirrors WSJT-X save_hash_call, which stores any base-38 token of at
+	// least 3 characters verbatim without structural validation.
 	if len(call) < 3 || call == "..." || strings.Contains(call, "<") || strings.Contains(call, ">") ||
 		isReservedCallToken(call) || !base38TextOK(call) {
-		return "", false
-	}
-	if _, _, _, ok := pack28WithSuffix(call); ok {
-		return call, true
-	}
-	if !type4CallOK(call, false) {
 		return "", false
 	}
 	return call, true
