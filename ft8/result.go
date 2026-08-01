@@ -31,7 +31,8 @@ type StructuredDecodeReport struct {
 	// StrictReport contains the strict decode messages and diagnostics.
 	StrictReport DecodeReport
 	// DeepReport contains deep decode messages and diagnostics when IncludeDeep
-	// was set; otherwise it is the zero value.
+	// was set or a stateful decoder is configured for deep search; otherwise it
+	// is the zero value.
 	DeepReport DecodeReport
 }
 
@@ -144,6 +145,25 @@ func structuredDeepOptions(options StructuredDecodeOptions) DecoderOptions {
 		deepOptions = DeepDecoderOptions()
 	}
 	return deepOptions
+}
+
+func singleModeStructuredDecode(messages []DecodedMessage, mode DecodeMode) DecodeResult {
+	if mode == DecodeModeDeep {
+		return mergeStructuredDecode(nil, messages, true)
+	}
+	return mergeStructuredDecode(messages, nil, false)
+}
+
+func singleModeStructuredReport(report DecodeReport, mode DecodeMode) StructuredDecodeReport {
+	out := StructuredDecodeReport{
+		Result: singleModeStructuredDecode(report.Messages, mode),
+	}
+	if mode == DecodeModeDeep {
+		out.DeepReport = report
+	} else {
+		out.StrictReport = report
+	}
+	return out
 }
 
 func mergeStructuredDecode(strict, deep []DecodedMessage, includeDeep bool) DecodeResult {

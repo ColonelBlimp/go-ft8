@@ -145,14 +145,14 @@ func decodeMessagesCoreWithDiagnostics(iwave []int16, a7Hints []a7Hint, hashes *
 					// re-unpack here against the live table so hash saves and
 					// lookups happen in candidate order, matching the
 					// sequential path.
-					text, ok := unpack77FromCodewordWithHashes(outcome.result.Codeword, hashes)
-					if !ok {
+					text, status := unpackCandidateMessage(outcome.result.Codeword, hashes)
+					if status == candidateMessageUnpackFailure {
 						if diagnostics != nil {
 							diagnostics.UnpackFailures++
 						}
 						continue
 					}
-					if strings.Contains(text, "/R") || strings.HasPrefix(text, "TU; ") {
+					if status == candidateMessageFiltered {
 						if diagnostics != nil {
 							diagnostics.RejectedMessageFilter++
 						}
@@ -495,15 +495,15 @@ func decodeLLRPass(llr *[174]float64, apmask *[174]int8, apProfileName string, a
 		}
 		return candidateDecode{}, false
 	}
-	msg, ok := unpack77FromCodewordWithHashes(result.Codeword, hashes)
-	if !ok {
+	msg, status := unpackCandidateMessage(result.Codeword, hashes)
+	if status == candidateMessageUnpackFailure {
 		if diagnostics != nil {
 			diagnostics.UnpackFailures++
 			diagnostics.recordAPRejectedAfterLDPC(apProfileName, apSource)
 		}
 		return candidateDecode{}, false
 	}
-	if strings.Contains(msg, "/R") || strings.HasPrefix(msg, "TU; ") {
+	if status == candidateMessageFiltered {
 		if diagnostics != nil {
 			diagnostics.RejectedMessageFilter++
 			diagnostics.recordAPRejectedAfterLDPC(apProfileName, apSource)
@@ -514,6 +514,38 @@ func decodeLLRPass(llr *[174]float64, apmask *[174]int8, apProfileName string, a
 		diagnostics.recordAPSuccess(apProfileName, apSource)
 	}
 	return candidateDecode{Text: msg, Result: result}, true
+}
+
+type candidateMessageStatus uint8
+
+const (
+	candidateMessageAccepted candidateMessageStatus = iota
+	candidateMessageUnpackFailure
+	candidateMessageFiltered
+)
+
+// unpackCandidateMessage validates and filters against an isolated hash-table
+// snapshot. Only accepted messages update a live table; frozen worker snapshots
+// remain read-only and are committed later in candidate order.
+func unpackCandidateMessage(cw [174]int8, hashes *hashTable) (string, candidateMessageStatus) {
+	workingHashes := hashes
+	var pendingSaves []string
+	if hashes != nil {
+		workingHashes = hashes.transactionalSnapshot(&pendingSaves)
+	}
+	msg, ok := unpack77FromCodewordWithHashes(cw, workingHashes)
+	if !ok {
+		return "", candidateMessageUnpackFailure
+	}
+	if strings.Contains(msg, "/R") || strings.HasPrefix(msg, "TU; ") {
+		return "", candidateMessageFiltered
+	}
+	if hashes != nil && !hashes.frozen {
+		for _, call := range pendingSaves {
+			hashes.Save(call)
+		}
+	}
+	return msg, candidateMessageAccepted
 }
 
 func allZeroCodeword(cw [174]int8) bool {

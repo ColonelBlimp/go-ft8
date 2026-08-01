@@ -148,7 +148,7 @@ func validateDecoderBlocks(blocks []int) error {
 		if block <= 0 {
 			return invalidDecoderOption(field, "must be positive")
 		}
-		if block*3456 > ft8DecodeBufferSamples {
+		if block > ft8DecodeBufferSamples/3456 {
 			return invalidDecoderOption(field, "entry %d exceeds the 15-second decoder buffer", block)
 		}
 		if seen[block] {

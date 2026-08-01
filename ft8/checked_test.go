@@ -43,6 +43,7 @@ func TestDecodeMessagesCheckedRejectsInvalidOptions(t *testing.T) {
 		{name: "bad frequency range", options: DecoderOptions{MinFreqHz: 3200, MaxFreqHz: 200}},
 		{name: "over nyquist", options: DecoderOptions{MaxFreqHz: wantSampleRate/2 + 1}},
 		{name: "invalid block", options: DecoderOptions{Blocks: []int{50, 0}}},
+		{name: "overflowing block", options: DecoderOptions{Blocks: []int{math.MaxInt}}},
 		{name: "duplicate blocks", options: DecoderOptions{Blocks: []int{50, 50}}},
 		{name: "too many blocks", options: DecoderOptions{Blocks: []int{50, 41, 43, 45, 47}}},
 		{name: "hard sync too high", options: DecoderOptions{HardSyncMin: ft8SyncSyms + 1}},

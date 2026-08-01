@@ -27,6 +27,9 @@ var decodeBlockPool = sync.Pool{
 // decodeBlocks builds the zero-padded FT8 float32 working array from raw int16
 // PCM samples.
 func decodeBlocks(iwave []int16, blocks int) []float32 {
+	if blocks <= 0 || blocks > ft8DecodeBufferSamples/3456 {
+		blocks = 50
+	}
 	nCopy := blocks * 3456
 	if nCopy > ft8DecodeBufferSamples {
 		nCopy = ft8DecodeBufferSamples

@@ -4,6 +4,7 @@
 package ft8
 
 import (
+	"math"
 	"os"
 	"testing"
 	"time"
@@ -33,6 +34,13 @@ func TestDeepDecoderOptionsEnableOSD(t *testing.T) {
 	}
 	if decoderOptionsEmpty(DecoderOptions{MaxAPCallHypotheses: 1}) {
 		t.Fatal("AP-call-hypotheses-only options treated as empty")
+	}
+}
+
+func TestNormalizeBlockCountsRejectsOverflow(t *testing.T) {
+	blocks, count := normalizeBlockCounts([]int{math.MaxInt})
+	if count != 1 || blocks[0] != 50 {
+		t.Fatalf("normalizeBlockCounts got blocks=%v count=%d, want default [50] count=1", blocks, count)
 	}
 }
 

@@ -26,7 +26,8 @@ type hashTable struct {
 	// decode workers: Save becomes a no-op so lookups stay race-free and
 	// deterministic. The decode commit phase re-runs unpack against the
 	// live table, so saves are never lost.
-	frozen bool
+	frozen       bool
+	pendingSaves *[]string
 }
 
 // frozenSnapshot returns a read-only copy of the table for concurrent
@@ -37,6 +38,13 @@ func (h *hashTable) frozenSnapshot() *hashTable {
 		calls22: append([]hashEntry(nil), h.calls22...),
 		frozen:  true,
 	}
+}
+
+// transactionalSnapshot shares immutable lookup state while collecting Save
+// calls for a later commit. Candidate validation can therefore remain
+// side-effect-free without copying the bounded hash history on every decode.
+func (h *hashTable) transactionalSnapshot(pending *[]string) *hashTable {
+	return &hashTable{calls22: h.calls22, pendingSaves: pending}
 }
 
 func unpack77FromCodewordWithHashes(cw [174]int8, hashes *hashTable) (string, bool) {
@@ -250,6 +258,10 @@ func unpack28WithHashes(n28 int, hashes *hashTable) (string, bool) {
 }
 
 func (h *hashTable) Save(call string) {
+	if h.pendingSaves != nil {
+		*h.pendingSaves = append(*h.pendingSaves, call)
+		return
+	}
 	if h.frozen {
 		return
 	}

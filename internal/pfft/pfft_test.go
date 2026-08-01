@@ -41,3 +41,39 @@ func TestPlanCleanupAndClose(t *testing.T) {
 		runtime.GC()
 	}
 }
+
+func TestClosedPlansPanicBeforeCallingC(t *testing.T) {
+	rp, err := NewRealPlan(64)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rp.Close()
+	assertPanics(t, "RealPlan.Forward", func() {
+		_ = rp.Forward(make([]float64, 64))
+	})
+	assertPanics(t, "RealPlan.Backward", func() {
+		_ = rp.Backward(make([]float64, 64))
+	})
+
+	cp, err := NewComplexPlan(64)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cp.Close()
+	assertPanics(t, "ComplexPlan.Forward", func() {
+		_ = cp.Forward(make([]complex128, 64))
+	})
+	assertPanics(t, "ComplexPlan.Backward", func() {
+		_ = cp.Backward(make([]complex128, 64))
+	})
+}
+
+func assertPanics(t *testing.T, name string, fn func()) {
+	t.Helper()
+	defer func() {
+		if recover() == nil {
+			t.Errorf("%s did not panic", name)
+		}
+	}()
+	fn()
+}

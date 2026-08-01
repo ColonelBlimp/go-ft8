@@ -81,6 +81,9 @@ func (p *RealPlan) Length() int { return p.n }
 // must have length exactly Length(); on return it holds the FFTPack
 // packed real-FFT output. Forward applies no normalisation.
 func (p *RealPlan) Forward(x []float64) error {
+	if p.plan == nil {
+		panic("pfft: RealPlan.Forward called after Close")
+	}
 	if len(x) != p.n {
 		return fmt.Errorf("pfft: RealPlan.Forward expected length %d, got %d", p.n, len(x))
 	}
@@ -101,6 +104,9 @@ func (p *RealPlan) Forward(x []float64) error {
 // normalisation — divide the output by Length() if a strict
 // round-trip is required.
 func (p *RealPlan) Backward(x []float64) error {
+	if p.plan == nil {
+		panic("pfft: RealPlan.Backward called after Close")
+	}
 	if len(x) != p.n {
 		return fmt.Errorf("pfft: RealPlan.Backward expected length %d, got %d", p.n, len(x))
 	}
@@ -179,6 +185,9 @@ func (p *ComplexPlan) Length() int { return p.n }
 // Forward runs an in-place complex-to-complex forward FFT. No
 // normalisation applied.
 func (p *ComplexPlan) Forward(x []complex128) error {
+	if p.plan == nil {
+		panic("pfft: ComplexPlan.Forward called after Close")
+	}
 	if len(x) != p.n {
 		return fmt.Errorf("pfft: ComplexPlan.Forward expected length %d, got %d", p.n, len(x))
 	}
@@ -194,6 +203,9 @@ func (p *ComplexPlan) Forward(x []complex128) error {
 // Backward runs an in-place complex-to-complex inverse FFT. No
 // normalisation applied — divide by Length() for a strict round-trip.
 func (p *ComplexPlan) Backward(x []complex128) error {
+	if p.plan == nil {
+		panic("pfft: ComplexPlan.Backward called after Close")
+	}
 	if len(x) != p.n {
 		return fmt.Errorf("pfft: ComplexPlan.Backward expected length %d, got %d", p.n, len(x))
 	}

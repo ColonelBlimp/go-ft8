@@ -34,9 +34,11 @@ tasks:
 
   set:
     desc: "Set the package version (usage: task version:set -- 0.1.0)."
+    env:
+      GO_FT8_VERSION_INPUT: '{{.CLI_ARGS}}'
     cmds:
       - |
-        version="{{.CLI_ARGS}}"
+        version="${GO_FT8_VERSION_INPUT}"
         if [ -z "$version" ]; then
           echo "Usage: task version:set -- 0.1.0"
           exit 1
@@ -47,7 +49,7 @@ tasks:
           exit 1
         fi
         printf '%s\n' "$version" > {{.VERSION_FILE}}
-      - echo "Version set to {{.CLI_ARGS}}"
+        echo "Version set to $version"
     silent: true
 
   bump:patch:

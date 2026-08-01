@@ -18,6 +18,7 @@ type Decoder struct {
 	hashes     hashTable
 	options    decodeOptions
 	rawOptions DecoderOptions
+	mode       DecodeMode
 }
 
 // NewDecoder returns a stateful FT8 decoder for one receiver stream using
@@ -31,13 +32,16 @@ func NewDecoder() *Decoder {
 //
 // The zero-value options preserve strict-mode behavior. Options are normalized
 // for permissive decode methods; DecodeMessagesChecked validates the original
-// options supplied here before advancing decoder state.
+// options supplied here before advancing decoder state. Structured methods
+// label the zero-value search configuration as strict and non-default search
+// options as deep; Workers alone does not change the label.
 func NewDecoderWithOptions(options DecoderOptions) *Decoder {
 	rawOptions := options
 	rawOptions.APCallHints = copyAPCallHints(options.APCallHints)
 	return &Decoder{
 		options:    normalizeDecoderOptions(options),
 		rawOptions: rawOptions,
+		mode:       decoderModeFromOptions(rawOptions),
 	}
 }
 
@@ -48,6 +52,16 @@ func NewDecoderWithOptions(options DecoderOptions) *Decoder {
 func (d *Decoder) SetAPCallHints(hints []APCallHint) {
 	d.rawOptions.APCallHints = copyAPCallHints(hints)
 	d.options.apCallHints = normalizeAPCallHints(hints)
+	d.mode = decoderModeFromOptions(d.rawOptions)
+}
+
+func decoderModeFromOptions(options DecoderOptions) DecodeMode {
+	// Worker count changes execution strategy, not decoder search behavior.
+	options.Workers = 0
+	if decoderOptionsEmpty(options) {
+		return DecodeModeStrict
+	}
+	return DecodeModeDeep
 }
 
 // DecodeMessages decodes one 15-second FT8 slot from 12 kHz mono signed-16-bit
@@ -99,7 +113,7 @@ func (d *Decoder) DecodeMessagesChecked(iwave []int16) (DecodeReport, error) {
 // pass; use the package-level DecodeStructured for strict+deep comparison.
 func (d *Decoder) DecodeStructured(iwave []int16) DecodeResult {
 	messages := d.DecodeMessages(iwave)
-	return mergeStructuredDecode(messages, nil, false)
+	return singleModeStructuredDecode(messages, d.mode)
 }
 
 // DecodeStructuredWithReport decodes one slot using this decoder's retained
@@ -111,10 +125,7 @@ func (d *Decoder) DecodeStructured(iwave []int16) DecodeResult {
 // updated.
 func (d *Decoder) DecodeStructuredWithReport(iwave []int16) StructuredDecodeReport {
 	report := d.DecodeMessagesWithReport(iwave)
-	return StructuredDecodeReport{
-		Result:       mergeStructuredDecode(report.Messages, nil, false),
-		StrictReport: report,
-	}
+	return singleModeStructuredReport(report, d.mode)
 }
 
 // DecodeStructuredChecked validates input and decoder options, then decodes one
@@ -126,12 +137,9 @@ func (d *Decoder) DecodeStructuredWithReport(iwave []int16) StructuredDecodeRepo
 func (d *Decoder) DecodeStructuredChecked(iwave []int16) (StructuredDecodeReport, error) {
 	report, err := d.DecodeMessagesChecked(iwave)
 	if err != nil {
-		return StructuredDecodeReport{StrictReport: report}, err
+		return singleModeStructuredReport(report, d.mode), err
 	}
-	return StructuredDecodeReport{
-		Result:       mergeStructuredDecode(report.Messages, nil, false),
-		StrictReport: report,
-	}, nil
+	return singleModeStructuredReport(report, d.mode), nil
 }
 
 type a7Hint struct {

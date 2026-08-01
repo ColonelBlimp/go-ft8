@@ -24,6 +24,26 @@ func TestDecodeStructuredStrictOnly(t *testing.T) {
 	}
 }
 
+func TestDecoderModeFromOptions(t *testing.T) {
+	tests := []struct {
+		name    string
+		options DecoderOptions
+		want    DecodeMode
+	}{
+		{name: "default", want: DecodeModeStrict},
+		{name: "workers only", options: DecoderOptions{Workers: 1}, want: DecodeModeStrict},
+		{name: "deep preset", options: DeepDecoderOptions(), want: DecodeModeDeep},
+		{name: "custom search", options: DecoderOptions{SyncMin: 1.6}, want: DecodeModeDeep},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := decoderModeFromOptions(test.options); got != test.want {
+				t.Fatalf("decoderModeFromOptions got %q, want %q", got, test.want)
+			}
+		})
+	}
+}
+
 func TestDecodeStructuredDeepLabelsExtras(t *testing.T) {
 	matches := corpusTruthFiles(t)
 
@@ -170,6 +190,24 @@ func TestDecoderDecodeStructuredWithReportAdvancesState(t *testing.T) {
 	}
 	if decoder.seq != 1 {
 		t.Fatalf("decoder seq got %d, want 1", decoder.seq)
+	}
+}
+
+func TestDecoderDecodeStructuredWithReportLabelsDeepMode(t *testing.T) {
+	decoder := NewDecoderWithOptions(DeepDecoderOptions())
+	samples := loadCorpusWAV(t, "20m_slot2.wav")
+	report := decoder.DecodeStructuredWithReport(samples)
+	if len(report.Result.Deep) == 0 || len(report.Result.Strict) != 0 {
+		t.Fatalf("stateful deep counts: deep=%d strict=%d", len(report.Result.Deep), len(report.Result.Strict))
+	}
+	if len(report.DeepReport.Messages) != len(report.Result.Deep) || len(report.StrictReport.Messages) != 0 {
+		t.Fatalf("stateful deep report counts: deep=%d strict=%d result=%d",
+			len(report.DeepReport.Messages), len(report.StrictReport.Messages), len(report.Result.Deep))
+	}
+	for _, msg := range report.Result.Messages {
+		if msg.Mode != DecodeModeDeep || msg.Strict || !msg.Deep || msg.Duplicate {
+			t.Fatalf("bad stateful deep structured flags: %+v", msg)
+		}
 	}
 }
 

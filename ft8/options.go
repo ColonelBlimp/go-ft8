@@ -161,7 +161,7 @@ func normalizeBlockCounts(blocks []int) ([4]int, int) {
 	var out [4]int
 	n := 0
 	for _, blocks := range blocks {
-		if blocks <= 0 || blocks*3456 > 180000 || n == len(out) {
+		if blocks <= 0 || blocks > ft8DecodeBufferSamples/3456 || n == len(out) {
 			continue
 		}
 		seen := false
