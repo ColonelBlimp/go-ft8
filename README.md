@@ -290,30 +290,42 @@ notices.
 
 ## Benchmarks
 
-Reference decode wall-clock benchmarks for version 0.6.0, measured 2026-07-05
-on an Intel Core i3-10100F (4 cores / 8 threads), Linux amd64, Go 1.26.4,
+Reference decode wall-clock benchmarks for version 0.7.1, measured 2026-08-09
+on an AMD Ryzen 9 9900X (12 cores / 24 threads), Linux amd64, Go 1.26.5,
 using the default PocketFFT backend, concurrent candidate analysis, and the
-six bundled WAV fixtures:
+six bundled WAV fixtures. Each table entry is the mean of the six per-fixture
+medians from seven runs:
 
 ```sh
 GOCACHE=/tmp/go-build go test ./ft8 -run=^$ \
   -bench='BenchmarkDecode(Messages|Structured).*PerFixture' \
-  -benchmem -benchtime=1x -count=1
+  -benchmem -benchtime=1x -count=7
 ```
 
 | Benchmark | Mean per 15s slot | Observed fixture range |
 | --------- | ----------------- | ---------------------- |
-| Strict `DecodeMessages` | 0.448 s | 0.377-0.553 s |
-| Deep without broad AP | 1.81 s | 1.69-2.15 s |
-| Deep `DecodeMessagesWithOptions(DeepDecoderOptions())` | 1.89 s | 1.75-2.16 s |
-| Deep with 200 AP call hints | 1.94 s | 1.71-2.26 s |
-| Structured strict+deep `DecodeStructured(...IncludeDeep)` | 2.32 s | 2.13-2.78 s |
+| Strict `DecodeMessages` | 0.136 s | 0.117-0.156 s |
+| Deep without broad AP | 0.516 s | 0.456-0.623 s |
+| Deep `DecodeMessagesWithOptions(DeepDecoderOptions())` | 0.514 s | 0.462-0.612 s |
+| Deep with 200 AP call hints | 0.516 s | 0.466-0.614 s |
+| Structured strict+deep `DecodeStructured(...IncludeDeep)` | 0.651 s | 0.578-0.774 s |
 
 Candidate analysis runs concurrently across all available CPUs by default and
 produces output identical to the sequential path; set
 `DecoderOptions.Workers = 1` to force sequential decoding, or a higher value
-to cap the goroutine count. For comparison, the equivalent 0.3.0 numbers on
-the same machine were 0.586 s strict and 4.05 s deep.
+to cap the goroutine count.
+
+Focused verified-payload benchmarks on the same host use five 200 ms samples:
+
+| Path | Median | Memory | Allocations |
+| ---- | ------ | ------ | ----------- |
+| DXpedition unpack | 208 ns | 48 B | 4 |
+| Telemetry unpack | 161 ns | 48 B | 4 |
+| ARRL RTTY Roundup unpack | 181 ns | 80 B | 6 |
+| EU VHF Contest unpack | 208 ns | 64 B | 3 |
+| Parsed candidate extraction | 287 ns | 64 B | 6 |
+| Unsupported candidate extraction | 92 ns | 0 B | 0 |
+| Reserved candidate extraction | 87 ns | 0 B | 0 |
 
 The profiling refresh used the same benchmark set with CPU and memory profiles:
 
@@ -324,10 +336,17 @@ GOCACHE=/tmp/go-build go test ./ft8 -run=^$ \
   -cpuprofile=/tmp/go-ft8-cpu.prof -memprofile=/tmp/go-ft8-mem.prof
 ```
 
-CPU samples were concentrated in PocketFFT CGO calls and LDPC/OSD decoding:
-`runtime.cgocall` 34.1% flat, `osd17491` 14.7% flat / 21.7% cumulative,
-`decode17491BP` 13.6% flat / 19.4% cumulative, `math.Sincos` 4.3%,
-`syncSum` 3.8%, and `subtractFT8` 3.1% flat / 25.9% cumulative.
+On the reference host, the combined benchmark CPU profile is concentrated in
+PocketFFT/downsampling and LDPC decoding: `runtime.cgocall` is 38.2% flat,
+`downsample` is 47.1% cumulative, `osd17491` is 13.2% flat / 19.5% cumulative,
+`decode17491BP` is 6.7% flat / 10.5% cumulative, and `subtractFT8` is 13.2%
+cumulative. Payload parsing does not appear among the reported CPU hotspots.
+
+The allocation profile is dominated by reusable working storage rather than
+payload results: subtraction scratch accounts for 29.0% of allocated bytes,
+spectra scratch 26.3%, finder scratch 13.1%, and parallel candidate outcomes
+8.3%. The end-of-run in-use snapshot is 228 MB, primarily scratch and FFT-plan
+pools sized for concurrent decoding.
 
 These numbers are local reference measurements, not performance guarantees.
 Wall time varies with CPU, CGO toolchain, OS scheduling, fixture content, and
@@ -354,6 +373,7 @@ Run decode benchmarks with:
 ```sh
 task bench
 task bench:structured-deep
+task bench:payload
 ```
 
 Run the fixture-independent smoke tests:
