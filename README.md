@@ -290,7 +290,7 @@ notices.
 
 ## Benchmarks
 
-Reference decode wall-clock benchmarks for version 0.7.1, measured 2026-08-09
+Reference decode wall-clock benchmarks for version 0.8.0, measured 2026-08-09
 on an AMD Ryzen 9 9900X (12 cores / 24 threads), Linux amd64, Go 1.26.5,
 using the default PocketFFT backend, concurrent candidate analysis, and the
 six bundled WAV fixtures. Each table entry is the mean of the six per-fixture
