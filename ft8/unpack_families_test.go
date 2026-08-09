@@ -51,8 +51,8 @@ func TestParseAdditionalMessageFamilies(t *testing.T) {
 
 	t.Run("EU VHF", func(t *testing.T) {
 		var bits [77]int8
-		writeBits(bits[:], 0, 12, hashCall("PA3XYZ", 12))
-		writeBits(bits[:], 12, 22, hashCall("G4ABC/P", 22))
+		writeBits(bits[:], 0, 12, hashCall("G4ABC/P", 12))
+		writeBits(bits[:], 12, 22, hashCall("PA9XYZ", 22))
 		writeBits(bits[:], 34, 1, 1)
 		writeBits(bits[:], 35, 3, 5)
 		writeBits(bits[:], 38, 11, 7)
@@ -60,10 +60,10 @@ func TestParseAdditionalMessageFamilies(t *testing.T) {
 		writeBits(bits[:], 74, 3, 5)
 
 		var hashes hashTable
+		hashes.Save("PA9XYZ")
 		hashes.Save("G4ABC/P")
-		hashes.Save("PA3XYZ")
 		assertPayloadParse(t, bits, &hashes, ParseStatusParsed,
-			"<PA3XYZ> <G4ABC/P> R 570007 JO22DB")
+			"<G4ABC/P> <PA9XYZ> R 570007 JO22DB")
 	})
 }
 
