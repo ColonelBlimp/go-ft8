@@ -5,6 +5,7 @@ package ft8
 
 import (
 	"fmt"
+	mathbits "math/bits"
 	"strings"
 )
 
@@ -55,21 +56,162 @@ func unpack77WithHashes(bits []int8, hashes *hashTable) (string, bool) {
 	if len(bits) < 77 {
 		return "", false
 	}
-	i3 := readBits(bits, 74, 3)
-	n3 := readBits(bits, 71, 3)
+	parsed := parsePayload77WithHashes(payload77FromBits(bits), hashes)
+	return parsed.Text, parsed.Status == ParseStatusParsed
+}
+
+type payloadParseResult struct {
+	Text   string
+	Type   MessageType
+	Status ParseStatus
+}
+
+func parsePayload77WithHashes(payload Payload77, hashes *hashTable) payloadParseResult {
+	typeID := payload.MessageType()
+	bitsArray := payload.int8Bits()
+	bits := bitsArray[:]
+	result := payloadParseResult{Type: typeID}
+	var ok bool
 
 	switch {
-	case i3 == 0 && n3 == 0:
-		return unpackFreeText(bits[:71])
-	case i3 == 0 && (n3 == 3 || n3 == 4):
-		return unpackARRLFieldDay(bits, n3, hashes)
-	case i3 == 1 || i3 == 2:
-		return unpackStandard(bits, i3, hashes)
-	case i3 == 4:
-		return unpackType4(bits, hashes)
+	case typeID.I3 == 0 && typeID.N3 == 0:
+		result.Text, ok = unpackFreeText(bits[:71])
+	case typeID.I3 == 0 && typeID.N3 == 1:
+		result.Text, ok = unpackDXpedition(bits, hashes)
+	case typeID.I3 == 0 && (typeID.N3 == 3 || typeID.N3 == 4):
+		result.Text, ok = unpackARRLFieldDay(bits, int(typeID.N3), hashes)
+	case typeID.I3 == 0 && typeID.N3 == 5:
+		result.Text, ok = unpackTelemetry(bits)
+	case typeID.I3 == 0 && typeID.N3 == 6:
+		result.Status = ParseStatusUnsupported
+		return result
+	case typeID.I3 == 0:
+		result.Status = ParseStatusUnknownType
+		return result
+	case typeID.I3 == 1 || typeID.I3 == 2:
+		result.Text, ok = unpackStandard(bits, int(typeID.I3), hashes)
+	case typeID.I3 == 3:
+		result.Text, ok = unpackARRLRTTY(bits, hashes)
+	case typeID.I3 == 4:
+		result.Text, ok = unpackType4(bits, hashes)
+	case typeID.I3 == 5:
+		result.Text, ok = unpackEUVHFContest(bits, hashes)
+	default:
+		result.Status = ParseStatusUnknownType
+		return result
+	}
+	if ok {
+		result.Status = ParseStatusParsed
+	} else {
+		result.Status = ParseStatusInvalid
+	}
+	return result
+}
+
+func unpackDXpedition(bits []int8, hashes *hashTable) (string, bool) {
+	n28a := readBits(bits, 0, 28)
+	n28b := readBits(bits, 28, 28)
+	n10 := readBits(bits, 56, 10)
+	n5 := readBits(bits, 66, 5)
+
+	call1, ok1 := unpack28WithHashes(n28a, hashes)
+	call2, ok2 := unpack28WithHashes(n28b, hashes)
+	if !ok1 || !ok2 || n28a <= 2 || n28b <= 2 {
+		return "", false
+	}
+	call3 := "<...>"
+	if hashes != nil {
+		if call := hashes.Lookup10(n10); call != "" {
+			call3 = "<" + call + ">"
+		}
+	}
+	report := formatReport(2*n5 - 30)
+	return call1 + " RR73; " + call2 + " " + call3 + " " + report, true
+}
+
+func unpackTelemetry(bits []int8) (string, bool) {
+	if len(bits) < 71 {
+		return "", false
+	}
+	part1 := readBits(bits, 0, 23)
+	part2 := readBits(bits, 23, 24)
+	part3 := readBits(bits, 47, 24)
+	text := fmt.Sprintf("%06X%06X%06X", part1, part2, part3)
+	return strings.TrimLeft(text, "0"), true
+}
+
+func unpackARRLRTTY(bits []int8, hashes *hashTable) (string, bool) {
+	itu := readBits(bits, 0, 1)
+	n28a := readBits(bits, 1, 28)
+	n28b := readBits(bits, 29, 28)
+	ir := readBits(bits, 57, 1)
+	irpt := readBits(bits, 58, 3)
+	nexch := readBits(bits, 61, 13)
+
+	call1, ok1 := unpack28WithHashes(n28a, hashes)
+	call2, ok2 := unpack28WithHashes(n28b, hashes)
+	if !ok1 || !ok2 {
+		return "", false
+	}
+
+	var exchange string
+	switch {
+	case nexch >= 1 && nexch <= 7999:
+		exchange = fmt.Sprintf("%04d", nexch)
+	case nexch >= 8001:
+		var ok bool
+		exchange, ok = arrlRTTYMultiplier(nexch - 8000)
+		if !ok {
+			return "", false
+		}
 	default:
 		return "", false
 	}
+
+	var text strings.Builder
+	if itu != 0 {
+		text.WriteString("TU; ")
+	}
+	text.WriteString(call1)
+	text.WriteByte(' ')
+	text.WriteString(call2)
+	text.WriteByte(' ')
+	if ir != 0 {
+		text.WriteString("R ")
+	}
+	text.WriteString(fmt.Sprintf("5%d9", irpt+2))
+	text.WriteByte(' ')
+	text.WriteString(exchange)
+	return text.String(), true
+}
+
+func unpackEUVHFContest(bits []int8, hashes *hashTable) (string, bool) {
+	n12 := readBits(bits, 0, 12)
+	n22 := readBits(bits, 12, 22)
+	ir := readBits(bits, 34, 1)
+	irpt := readBits(bits, 35, 3)
+	serial := readBits(bits, 38, 11)
+	gridIndex := readBits(bits, 49, 25)
+
+	grid, ok := toGrid6(gridIndex)
+	if !ok {
+		return "", false
+	}
+	call1 := "<...>"
+	call2 := "<...>"
+	if hashes != nil {
+		if call := hashes.Lookup12(n12); call != "" {
+			call1 = "<" + call + ">"
+		}
+		if call := hashes.Lookup22(n22); call != "" {
+			call2 = "<" + call + ">"
+		}
+	}
+	exchange := fmt.Sprintf("%02d%04d", 52+irpt, serial)
+	if ir != 0 {
+		return call1 + " " + call2 + " R " + exchange + " " + grid, true
+	}
+	return call1 + " " + call2 + " " + exchange + " " + grid, true
 }
 
 func unpackStandard(bits []int8, i3 int, hashes *hashTable) (string, bool) {
@@ -178,13 +320,24 @@ func unpackType4(bits []int8, hashes *hashTable) (string, bool) {
 
 func unpackFreeText(bits []int8) (string, bool) {
 	const alphabet = " 0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ+-./?"
+	if len(bits) < 71 {
+		return "", false
+	}
+	var high uint64
+	for i := 0; i < 7; i++ {
+		high = high<<1 | uint64(bits[i]&1)
+	}
+	var low uint64
+	for i := 7; i < 71; i++ {
+		low = low<<1 | uint64(bits[i]&1)
+	}
 	out := make([]byte, 13)
-	for i := 0; i < 13; i++ {
-		v := readBits(bits, i*5, 5)
-		if v >= len(alphabet) {
-			return "", false
-		}
-		out[i] = alphabet[v]
+	for i := len(out) - 1; i >= 0; i-- {
+		quotientHigh := high / uint64(len(alphabet))
+		remainderHigh := high % uint64(len(alphabet))
+		quotientLow, remainder := mathbits.Div64(remainderHigh, low, uint64(len(alphabet)))
+		out[i] = alphabet[remainder]
+		high, low = quotientHigh, quotientLow
 	}
 	msg := strings.TrimSpace(string(out))
 	return msg, msg != ""
@@ -296,6 +449,18 @@ func (h *hashTable) Lookup12(hash int) string {
 	return ""
 }
 
+func (h *hashTable) Lookup10(hash int) string {
+	if hash < 0 || hash >= 1<<10 {
+		return ""
+	}
+	for _, entry := range h.calls22 {
+		if hashCall(entry.call, 10) == hash {
+			return entry.call
+		}
+	}
+	return ""
+}
+
 func (h *hashTable) Lookup22(hash int) string {
 	for _, entry := range h.calls22 {
 		if entry.hash == hash {
@@ -364,6 +529,27 @@ func toGrid4(n int) (string, bool) {
 		return "", false
 	}
 	return string([]byte{byte('A' + j1), byte('A' + j2), byte('0' + j3), byte('0' + j4)}), true
+}
+
+func toGrid6(n int) (string, bool) {
+	const maxGrid6 = 18*18*10*10*24*24 - 1
+	if n < 0 || n > maxGrid6 {
+		return "", false
+	}
+	j1 := n / (18 * 10 * 10 * 24 * 24)
+	n -= j1 * 18 * 10 * 10 * 24 * 24
+	j2 := n / (10 * 10 * 24 * 24)
+	n -= j2 * 10 * 10 * 24 * 24
+	j3 := n / (10 * 24 * 24)
+	n -= j3 * 10 * 24 * 24
+	j4 := n / (24 * 24)
+	n -= j4 * 24 * 24
+	j5 := n / 24
+	j6 := n - j5*24
+	return string([]byte{
+		byte('A' + j1), byte('A' + j2), byte('0' + j3),
+		byte('0' + j4), byte('A' + j5), byte('A' + j6),
+	}), true
 }
 
 func formatReport(snr int) string {
