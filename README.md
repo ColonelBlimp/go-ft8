@@ -50,6 +50,9 @@ func main() {
 
 	messages := ft8.DecodeMessages(pcm)
 	for _, msg := range messages {
+		if msg.ParseStatus != ft8.ParseStatusParsed {
+			continue // Retain msg.Payload separately if raw observations matter.
+		}
 		fmt.Printf("%3d dB %7.1f Hz %+5.2f s  %s\n", msg.SNR, msg.FreqHz, msg.DTSec, msg.Text)
 	}
 }
@@ -58,6 +61,18 @@ func main() {
 `DecodedMessage.SNR` is the received SNR estimate in dB using the WSJT-X/JT9
 2500 Hz reference bandwidth. Use `msg.SignalReport()` when constructing a reply
 that needs an encodable FT8 signal report such as `-13` or `+04`.
+
+Every signal-level candidate accepted after LDPC, CRC, hard-error, and all-zero
+checks is returned. `DecodedMessage.Payload` contains its exact verified 77-bit
+payload, `ParseStatus` says whether canonical text was produced, and
+`Payload.MessageType()` returns the `i3`/`n3` family selector. `Payload.Bits()`
+returns one byte per bit when a consumer needs the unpacked bit sequence.
+
+`DecodedMessage.Provenance` identifies the decoding algorithm (`bp`, `osd`, or
+`a7`). Its `APProfile` and `APSource` fields identify a-priori assistance and
+are empty for an unassisted metric decode. The codec returns `/R` and `TU;`
+observations without applying publication policy; callers can store every
+verified payload and independently decide which parsed observations to forward.
 
 For a receiver stream, keep one decoder instance per stream so hash and A7
 history can carry across adjacent slots:
@@ -163,32 +178,30 @@ PTT, and radio control belong in separate packages.
 
 ## Message Format Coverage
 
-`go-ft8` does not yet implement every WSJT-X 77-bit message family. Current
-decode support is aimed at ordinary FT8 QSO traffic and service integration, not
-full contest/DXpedition parity.
+The decoder returns every verified payload, including assigned-but-unsupported
+and reserved families. Supported families produce canonical text; other
+families remain available to storage and protocol-analysis consumers through
+`DecodedMessage.Payload` and `ParseStatus`.
 
-Supported decode payloads:
+| Type | Parse status | Interpretation |
+| ---- | ------------ | -------------- |
+| `i3=0,n3=0` | `ParseStatusParsed` | Free text, up to 13 characters |
+| `i3=0,n3=1` | `ParseStatusParsed` | DXpedition / Fox-Hound |
+| `i3=0,n3=2` and `i3=0,n3=7` | `ParseStatusUnknownType` | Reserved subtypes |
+| `i3=0,n3=3` and `i3=0,n3=4` | `ParseStatusParsed` | ARRL Field Day exchange |
+| `i3=0,n3=5` | `ParseStatusParsed` | Telemetry, up to 18 hexadecimal characters |
+| `i3=0,n3=6` | `ParseStatusUnsupported` | Assigned compatibility format not unpacked by this package |
+| `i3=1` | `ParseStatusParsed` | Standard messages, including `/R` |
+| `i3=2` | `ParseStatusParsed` | Standard `/P` form |
+| `i3=3` | `ParseStatusParsed` | ARRL RTTY Roundup, including optional `TU;` |
+| `i3=4` | `ParseStatusParsed` | Compound/nonstandard calls using 12-bit hash context |
+| `i3=5` | `ParseStatusParsed` | EU VHF contest with hashed calls, report, serial, and grid6 |
+| `i3=6` and `i3=7` | `ParseStatusUnknownType` | Reserved message types |
 
-| Type | Status |
-| ---- | ------ |
-| `i3=0,n3=0` | Free text, up to 13 characters |
-| `i3=0,n3=3` and `i3=0,n3=4` | ARRL Field Day exchange |
-| `i3=1` | Standard messages: CQ, calls, grid, reports, RRR, RR73, 73 |
-| `i3=2` | Standard `/P` form used by European VHF-style messages |
-| `i3=4` | Compound/nonstandard calls using 12-bit hash context |
-
-Known decode gaps:
-
-| Type | Missing family |
-| ---- | -------------- |
-| `i3=0,n3=1` | DXpedition / Fox-Hound |
-| `i3=0,n3=5` | Telemetry, 18 hex characters |
-| `i3=3` | ARRL RTTY Roundup |
-| `i3=5` | EU VHF contest with hashed calls, report, serial, and grid6 |
-
-Decoded candidates with unsupported payload formats are rejected during unpack
-and counted in `DecodeDiagnostics.UnpackFailures`. The public decoder also
-currently filters decoded text containing `/R` and text beginning with `TU; `.
+A known family with an invalid field combination is returned with
+`ParseStatusInvalid`. `DecodeDiagnostics.UnpackFailures` and
+`RejectedMessageFilter` remain as deprecated compatibility fields and are no
+longer incremented.
 
 The reference message-family table is WSJT-X's 77-bit format description:
 https://github.com/WSJTX/wsjtx/blob/master/lib/77bit/77bit.txt

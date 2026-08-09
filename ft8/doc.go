@@ -18,10 +18,14 @@
 // ErrInvalidDecoderOptions, and errors.As with DecodeInputError or
 // DecoderOptionError for structured validation details.
 //
-// Decode currently supports free text, standard messages, the standard /P
-// variant, ARRL Field Day exchange messages, and type 4 compound/nonstandard-call
-// messages. DXpedition, telemetry, RTTY Roundup, and type 5 EU VHF contest
-// payloads are not yet unpacked.
+// Decode supports free text, DXpedition/Fox-Hound, telemetry, standard /R and
+// /P messages, ARRL Field Day, ARRL RTTY Roundup, type 4
+// compound/nonstandard-call messages, and type 5 EU VHF contest exchanges.
+// Every signal-level candidate accepted after LDPC, CRC, hard-error, and
+// all-zero checks is returned with its verified Payload77, ParseStatus, and
+// DecodeProvenance. Assigned-but-unsupported, reserved, and structurally
+// invalid payloads are returned without canonical text. The package does not
+// suppress /R or TU; observations; publication filtering belongs to callers.
 // The default decoder includes a conservative CQ AP profile. EnableBroadAP and
 // DeepDecoderOptions add experimental directed-CQ AP profiles.
 // APCallHints and (*Decoder).SetAPCallHints provide upstream-ranked callsign
