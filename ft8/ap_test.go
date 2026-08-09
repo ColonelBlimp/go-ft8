@@ -77,7 +77,7 @@ func TestDecodeLLRPassAPDiagnosticsSuccess(t *testing.T) {
 	}
 }
 
-func TestDecodeLLRPassAPDiagnosticsRejectedAfterLDPC(t *testing.T) {
+func TestDecodeLLRPassExposesAPAssistedRoverObservation(t *testing.T) {
 	mutate := func(bits *[77]int8) {
 		bits[28] = 1
 	}
@@ -85,26 +85,32 @@ func TestDecodeLLRPassAPDiagnosticsRejectedAfterLDPC(t *testing.T) {
 	standard := initStandardTypeAPProfile("standard", 1)
 	var diagnostics DecodeDiagnostics
 
-	_, ok := decodeLLRPass(&llr, &standard.mask, standard.name, standard.source, true, nil, normalizeDecoderOptions(DecoderOptions{}), &diagnostics)
-	if ok {
-		t.Fatal("decodeLLRPass accepted AP decode that should be message-filtered")
+	decoded, ok := decodeLLRPass(&llr, &standard.mask, standard.name, standard.source, true, nil, normalizeDecoderOptions(DecoderOptions{}), &diagnostics)
+	if !ok {
+		t.Fatal("decodeLLRPass rejected an AP-assisted /R observation")
 	}
 	if diagnostics.LDPCAttempts != 1 || diagnostics.APAttempts != 1 {
 		t.Fatalf("attempt counters got total=%d ap=%d, want 1/1",
 			diagnostics.LDPCAttempts, diagnostics.APAttempts)
 	}
-	if diagnostics.RejectedMessageFilter != 1 {
-		t.Fatalf("RejectedMessageFilter got %d, want 1", diagnostics.RejectedMessageFilter)
+	if decoded.Text != "K1ABC/R W9XYZ RR73" || decoded.ParseStatus != ParseStatusParsed {
+		t.Fatalf("decoded got status=%s text=%q", decoded.ParseStatus, decoded.Text)
 	}
-	if diagnostics.APRejectedAfterLDPC != 1 || diagnostics.APRejectedAfterLDPCByProfile["standard"] != 1 {
-		t.Fatalf("AP post-LDPC rejections got total=%d standard=%d, want 1/1",
+	if decoded.Provenance.Algorithm != DecodeAlgorithmBP || decoded.Provenance.APProfile != "standard" || decoded.Provenance.APSource != "standard" {
+		t.Fatalf("decoded provenance got %+v, want BP/standard/standard", decoded.Provenance)
+	}
+	if diagnostics.RejectedMessageFilter != 0 {
+		t.Fatalf("RejectedMessageFilter got %d, want 0", diagnostics.RejectedMessageFilter)
+	}
+	if diagnostics.APRejectedAfterLDPC != 0 || diagnostics.APRejectedAfterLDPCByProfile["standard"] != 0 {
+		t.Fatalf("AP post-LDPC rejections got total=%d standard=%d, want 0/0",
 			diagnostics.APRejectedAfterLDPC, diagnostics.APRejectedAfterLDPCByProfile["standard"])
 	}
-	if diagnostics.APRejectedAfterLDPCBySource["standard"] != 1 {
-		t.Fatalf("standard AP source rejections got %d, want 1", diagnostics.APRejectedAfterLDPCBySource["standard"])
+	if diagnostics.APRejectedAfterLDPCBySource["standard"] != 0 {
+		t.Fatalf("standard AP source rejections got %d, want 0", diagnostics.APRejectedAfterLDPCBySource["standard"])
 	}
-	if diagnostics.APSuccesses != 0 {
-		t.Fatalf("APSuccesses got %d, want 0", diagnostics.APSuccesses)
+	if diagnostics.APSuccesses != 1 {
+		t.Fatalf("APSuccesses got %d, want 1", diagnostics.APSuccesses)
 	}
 }
 

@@ -61,16 +61,17 @@ func unpack77WithHashes(bits []int8, hashes *hashTable) (string, bool) {
 }
 
 type payloadParseResult struct {
-	Text   string
-	Type   MessageType
-	Status ParseStatus
+	Payload Payload77
+	Text    string
+	Type    MessageType
+	Status  ParseStatus
 }
 
 func parsePayload77WithHashes(payload Payload77, hashes *hashTable) payloadParseResult {
 	typeID := payload.MessageType()
 	bitsArray := payload.int8Bits()
 	bits := bitsArray[:]
-	result := payloadParseResult{Type: typeID}
+	result := payloadParseResult{Payload: payload, Type: typeID}
 	var ok bool
 
 	switch {

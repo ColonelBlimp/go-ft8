@@ -7,7 +7,6 @@ import (
 	"math"
 	"runtime"
 	"sort"
-	"strings"
 	"sync"
 	"sync/atomic"
 )
@@ -15,7 +14,16 @@ import (
 // DecodedMessage describes one recovered FT8 message and the signal/decode
 // metrics associated with the candidate that produced it.
 type DecodedMessage struct {
+	// Text is the canonical message text when ParseStatus is ParseStatusParsed.
+	// It is empty for verified payloads that are unsupported, reserved, or
+	// structurally invalid.
 	Text string
+	// Payload is the verified 77-bit message payload recovered by the decoder.
+	Payload Payload77
+	// ParseStatus describes whether Payload could be rendered as canonical text.
+	ParseStatus ParseStatus
+	// Provenance identifies the decoder and any a-priori assistance used.
+	Provenance DecodeProvenance
 	// SNR is the received signal-to-noise estimate in dB, using the
 	// WSJT-X/JT9-style 2500 Hz reference bandwidth.
 	SNR    int
@@ -73,7 +81,7 @@ func decodeMessagesCore(iwave []int16, a7Hints []a7Hint, hashes *hashTable, opti
 }
 
 func decodeMessagesCoreWithDiagnostics(iwave []int16, a7Hints []a7Hint, hashes *hashTable, options decodeOptions, diagnostics *DecodeDiagnostics) []DecodedMessage {
-	seen := make(map[string]bool)
+	seen := make(map[Payload77]bool)
 	var out []DecodedMessage
 	var fullDD []float32
 	var fullBaseline *lazySpectrumBaseline
@@ -103,12 +111,15 @@ func decodeMessagesCoreWithDiagnostics(iwave []int16, a7Hints []a7Hint, hashes *
 			}
 			var subtract []DecodedMessage
 			var subtractCodewords [][174]int8
-			commit := func(text string, refined refinedCandidate, cand candidate, symbolPower *[8][ft8Symbols]float64, result *ldpcResult) {
+			commit := func(decoded candidateDecode, refined refinedCandidate, cand candidate, symbolPower *[8][ft8Symbols]float64) {
 				if diagnostics != nil {
 					diagnostics.DecodedCandidates++
 				}
 				msg := DecodedMessage{
-					Text:           text,
+					Text:           decoded.Text,
+					Payload:        decoded.Payload,
+					ParseStatus:    decoded.ParseStatus,
+					Provenance:     decoded.Provenance,
 					FreqHz:         refined.FreqHz,
 					DTSec:          refined.DTSec - 0.5,
 					Sync:           cand.Sync,
@@ -116,19 +127,19 @@ func decodeMessagesCoreWithDiagnostics(iwave []int16, a7Hints []a7Hint, hashes *
 					CostasGeo:      refined.CostasGeo,
 					CostasMinBlock: refined.CostasMinBlock,
 					Blocks:         blocks,
-					HardErrors:     result.HardErrors,
-					DMin:           result.DMin,
+					HardErrors:     decoded.Result.HardErrors,
+					DMin:           decoded.Result.DMin,
 				}
 				subtract = append(subtract, msg)
-				subtractCodewords = append(subtractCodewords, result.Codeword)
-				if seen[text] {
+				subtractCodewords = append(subtractCodewords, decoded.Result.Codeword)
+				if seen[decoded.Payload] {
 					if diagnostics != nil {
 						diagnostics.DuplicateMessages++
 					}
 					return
 				}
-				seen[text] = true
-				msg.SNR = estimateSNR(tonesFromCodeword(result.Codeword), *symbolPower, baseline.noiseAtFreq(cand.FreqHz))
+				seen[decoded.Payload] = true
+				msg.SNR = estimateSNR(tonesFromCodeword(decoded.Result.Codeword), *symbolPower, baseline.noiseAtFreq(cand.FreqHz))
 				out = append(out, msg)
 			}
 			if workers := decodeWorkerCount(options, len(candidates)); workers > 1 {
@@ -145,20 +156,14 @@ func decodeMessagesCoreWithDiagnostics(iwave []int16, a7Hints []a7Hint, hashes *
 					// re-unpack here against the live table so hash saves and
 					// lookups happen in candidate order, matching the
 					// sequential path.
-					text, status := unpackCandidateMessage(outcome.result.Codeword, hashes)
-					if status == candidateMessageUnpackFailure {
-						if diagnostics != nil {
-							diagnostics.UnpackFailures++
-						}
-						continue
-					}
-					if status == candidateMessageFiltered {
-						if diagnostics != nil {
-							diagnostics.RejectedMessageFilter++
-						}
-						continue
-					}
-					commit(text, outcome.refined, candidates[i], &outcome.symbolPower, &outcome.result)
+					parsed := parseCandidatePayload(outcome.result.Codeword, hashes)
+					commit(candidateDecode{
+						Text:        parsed.Text,
+						Payload:     parsed.Payload,
+						ParseStatus: parsed.Status,
+						Provenance:  outcome.provenance,
+						Result:      outcome.result,
+					}, outcome.refined, candidates[i], &outcome.symbolPower)
 				}
 			} else {
 				ds := getDownsampler()
@@ -170,7 +175,7 @@ func decodeMessagesCoreWithDiagnostics(iwave []int16, a7Hints []a7Hint, hashes *
 					if !ok {
 						continue
 					}
-					commit(decoded.Text, analysis.Refined, analysis.candidate, &analysis.SymbolPower, &decoded.Result)
+					commit(decoded, analysis.Refined, analysis.candidate, &analysis.SymbolPower)
 				}
 				putDownsampler(ds)
 			}
@@ -209,8 +214,11 @@ func decodeMessagesCoreWithDiagnostics(iwave []int16, a7Hints []a7Hint, hashes *
 }
 
 type candidateDecode struct {
-	Text   string
-	Result ldpcResult
+	Text        string
+	Payload     Payload77
+	ParseStatus ParseStatus
+	Provenance  DecodeProvenance
+	Result      ldpcResult
 }
 
 // candidateOutcome carries the result of one concurrently analyzed candidate
@@ -219,6 +227,7 @@ type candidateDecode struct {
 type candidateOutcome struct {
 	refined     refinedCandidate
 	symbolPower [8][ft8Symbols]float64
+	provenance  DecodeProvenance
 	result      ldpcResult
 	ok          bool
 }
@@ -271,6 +280,7 @@ func decodeCandidatesParallel(dd []float32, candidates []candidate, workers int,
 				outcomes[i] = candidateOutcome{
 					refined:     analysis.Refined,
 					symbolPower: analysis.SymbolPower,
+					provenance:  decoded.Provenance,
 					result:      decoded.Result,
 					ok:          true,
 				}
@@ -495,57 +505,35 @@ func decodeLLRPass(llr *[174]float64, apmask *[174]int8, apProfileName string, a
 		}
 		return candidateDecode{}, false
 	}
-	msg, status := unpackCandidateMessage(result.Codeword, hashes)
-	if status == candidateMessageUnpackFailure {
-		if diagnostics != nil {
-			diagnostics.UnpackFailures++
-			diagnostics.recordAPRejectedAfterLDPC(apProfileName, apSource)
-		}
-		return candidateDecode{}, false
-	}
-	if status == candidateMessageFiltered {
-		if diagnostics != nil {
-			diagnostics.RejectedMessageFilter++
-			diagnostics.recordAPRejectedAfterLDPC(apProfileName, apSource)
-		}
-		return candidateDecode{}, false
-	}
+	parsed := parseCandidatePayload(result.Codeword, hashes)
 	if diagnostics != nil {
 		diagnostics.recordAPSuccess(apProfileName, apSource)
 	}
-	return candidateDecode{Text: msg, Result: result}, true
+	return candidateDecode{
+		Text:        parsed.Text,
+		Payload:     parsed.Payload,
+		ParseStatus: parsed.Status,
+		Provenance:  provenanceForLDPC(result, apProfileName, apSource),
+		Result:      result,
+	}, true
 }
 
-type candidateMessageStatus uint8
-
-const (
-	candidateMessageAccepted candidateMessageStatus = iota
-	candidateMessageUnpackFailure
-	candidateMessageFiltered
-)
-
-// unpackCandidateMessage validates and filters against an isolated hash-table
-// snapshot. Only accepted messages update a live table; frozen worker snapshots
+// parseCandidatePayload parses against an isolated hash-table snapshot. Only
+// successfully parsed messages update a live table; frozen worker snapshots
 // remain read-only and are committed later in candidate order.
-func unpackCandidateMessage(cw [174]int8, hashes *hashTable) (string, candidateMessageStatus) {
+func parseCandidatePayload(cw [174]int8, hashes *hashTable) payloadParseResult {
 	workingHashes := hashes
 	var pendingSaves []string
 	if hashes != nil {
 		workingHashes = hashes.transactionalSnapshot(&pendingSaves)
 	}
-	msg, ok := unpack77FromCodewordWithHashes(cw, workingHashes)
-	if !ok {
-		return "", candidateMessageUnpackFailure
-	}
-	if strings.Contains(msg, "/R") || strings.HasPrefix(msg, "TU; ") {
-		return "", candidateMessageFiltered
-	}
-	if hashes != nil && !hashes.frozen {
+	parsed := parsePayload77WithHashes(payload77FromBits(cw[:77]), workingHashes)
+	if parsed.Status == ParseStatusParsed && hashes != nil && !hashes.frozen {
 		for _, call := range pendingSaves {
 			hashes.Save(call)
 		}
 	}
-	return msg, candidateMessageAccepted
+	return parsed
 }
 
 func allZeroCodeword(cw [174]int8) bool {

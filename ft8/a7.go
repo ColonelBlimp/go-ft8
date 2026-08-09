@@ -219,7 +219,7 @@ func isDirectedCQToken(s string) bool {
 	return len(s) >= 1 && len(s) <= 4 && allLetters(s)
 }
 
-func decodeA7Hints(dd []float32, hints []a7Hint, seen map[string]bool, minFreqHz int, maxFreqHz int) []DecodedMessage {
+func decodeA7Hints(dd []float32, hints []a7Hint, seen map[Payload77]bool, minFreqHz int, maxFreqHz int) []DecodedMessage {
 	if len(hints) == 0 {
 		return nil
 	}
@@ -227,7 +227,7 @@ func decodeA7Hints(dd []float32, hints []a7Hint, seen map[string]bool, minFreqHz
 	return decodeA7HintsWithBaseline(dd, hints, seen, &baseline)
 }
 
-func decodeA7HintsWithBaseline(dd []float32, hints []a7Hint, seen map[string]bool, baseline *lazySpectrumBaseline) []DecodedMessage {
+func decodeA7HintsWithBaseline(dd []float32, hints []a7Hint, seen map[Payload77]bool, baseline *lazySpectrumBaseline) []DecodedMessage {
 	if len(hints) == 0 {
 		return nil
 	}
@@ -243,12 +243,15 @@ func decodeA7HintsWithBaseline(dd []float32, hints []a7Hint, seen map[string]boo
 		analysis := analyzeCandidateWithDownsampler(dd, ds, cand, recompute)
 		recompute = false
 		decoded, ok := decodeA7Candidate(&analysis, hint, cache)
-		if !ok || seen[decoded.Text] {
+		if !ok || seen[decoded.Payload] {
 			continue
 		}
-		seen[decoded.Text] = true
+		seen[decoded.Payload] = true
 		out = append(out, DecodedMessage{
 			Text:           decoded.Text,
+			Payload:        decoded.Payload,
+			ParseStatus:    decoded.ParseStatus,
+			Provenance:     decoded.Provenance,
 			SNR:            estimateSNR(tonesFromCodeword(decoded.Result.Codeword), analysis.SymbolPower, baseline.noiseAtFreq(hint.FreqHz)),
 			FreqHz:         analysis.Refined.FreqHz,
 			DTSec:          analysis.Refined.DTSec - 0.5,
@@ -328,7 +331,17 @@ func decodeA7Candidate(analysis *candidateAnalysis, hint a7Hint, cache map[strin
 	if strings.HasPrefix(bestText, "CQ ") && hint.Grid == "" {
 		return candidateDecode{}, false
 	}
-	return candidateDecode{Text: bestText, Result: bestResult}, true
+	parsed := parseCandidatePayload(bestResult.Codeword, nil)
+	if parsed.Status != ParseStatusParsed || parsed.Text != bestText {
+		return candidateDecode{}, false
+	}
+	return candidateDecode{
+		Text:        parsed.Text,
+		Payload:     parsed.Payload,
+		ParseStatus: parsed.Status,
+		Provenance:  DecodeProvenance{Algorithm: DecodeAlgorithmA7},
+		Result:      bestResult,
+	}, true
 }
 
 func scaleLLR(metric [174]float64) [174]float64 {

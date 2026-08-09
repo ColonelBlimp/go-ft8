@@ -56,7 +56,7 @@ type DecodeDiagnostics struct {
 	// APSuccessesBySource records accepted AP decodes by upstream or built-in AP source.
 	APSuccessesBySource map[string]int
 	// APRejectedAfterLDPC counts AP passes that produced a valid codeword that
-	// was later rejected by hard-error, all-zero, unpack, or message filters.
+	// was later rejected by hard-error or all-zero guards.
 	APRejectedAfterLDPC int
 	// APRejectedAfterLDPCByProfile records post-LDPC AP rejections by profile name.
 	APRejectedAfterLDPCByProfile map[string]int
@@ -76,9 +76,13 @@ type DecodeDiagnostics struct {
 	RejectedHardErrors int
 	// RejectedAllZero counts decoded all-zero codewords rejected as invalid.
 	RejectedAllZero int
-	// UnpackFailures counts valid codewords that could not be unpacked to text.
+	// UnpackFailures is retained for source compatibility. Verified payloads are
+	// returned with their ParseStatus instead of being rejected during unpack.
+	// Deprecated: this counter is no longer incremented.
 	UnpackFailures int
-	// RejectedMessageFilter counts decoded messages rejected by package filters.
+	// RejectedMessageFilter is retained for source compatibility. Publication
+	// filtering belongs to the caller.
+	// Deprecated: this counter is no longer incremented.
 	RejectedMessageFilter int
 	// DecodedCandidates counts candidate decodes before duplicate suppression.
 	DecodedCandidates int

@@ -171,10 +171,10 @@ func mergeStructuredDecode(strict, deep []DecodedMessage, includeDeep bool) Deco
 		Strict: strict,
 	}
 	merged := make([]StructuredMessage, 0, len(strict))
-	byText := make(map[string]int, len(strict))
+	byPayload := make(map[Payload77]int, len(strict))
 	for _, msg := range strict {
 		copyMsg := msg
-		byText[msg.Text] = len(merged)
+		byPayload[msg.Payload] = len(merged)
 		merged = append(merged, StructuredMessage{
 			DecodedMessage: msg,
 			Mode:           DecodeModeStrict,
@@ -186,7 +186,7 @@ func mergeStructuredDecode(strict, deep []DecodedMessage, includeDeep bool) Deco
 	if includeDeep {
 		result.Deep = deep
 		for _, msg := range deep {
-			if idx, ok := byText[msg.Text]; ok {
+			if idx, ok := byPayload[msg.Payload]; ok {
 				copyMsg := msg
 				merged[idx].Deep = true
 				merged[idx].Duplicate = true
@@ -194,7 +194,7 @@ func mergeStructuredDecode(strict, deep []DecodedMessage, includeDeep bool) Deco
 				continue
 			}
 			copyMsg := msg
-			byText[msg.Text] = len(merged)
+			byPayload[msg.Payload] = len(merged)
 			merged = append(merged, StructuredMessage{
 				DecodedMessage: msg,
 				Mode:           DecodeModeDeep,
