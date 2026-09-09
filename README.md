@@ -1,13 +1,15 @@
 # go-ft8
 
-`go-ft8` is a Go implementation of an FT8 codec. It decodes one 15-second FT8
-slot from 12 kHz mono-signed 16-bit PCM audio, encodes supported standard FT8
-messages to protocol symbols, and exposes both a strict decoder path and
-optional deeper experimental search modes.
+`go-ft8` is a Go implementation of FT8 decoding and FT8/FT4 protocol encoding.
+It decodes one 15-second FT8 slot from 12 kHz mono-signed 16-bit PCM audio,
+encodes supported standard FT8 and FT4 messages to protocol symbols, and
+exposes both a strict FT8 decoder path and optional deeper experimental search
+modes.
 
-This repository is intended for FT8 protocol experimentation, parity work,
+This repository is intended for FT8/FT4 protocol experimentation, parity work,
 profiling, and integration into larger Go applications that need FT8 message
-recovery or standard-message encoding.
+recovery or standard-message encoding. FT4 receive-side decoding is not yet
+implemented.
 
 ## Status
 
@@ -29,6 +31,12 @@ Import the codec package:
 
 ```go
 import "github.com/ColonelBlimp/go-ft8/ft8"
+```
+
+The initial FT4 encoder is a sibling package:
+
+```go
+import "github.com/ColonelBlimp/go-ft8/ft4"
 ```
 
 ## Basic Usage
@@ -150,6 +158,20 @@ if err != nil {
 fmt.Println(encoded.Text, encoded.Tones)
 ```
 
+FT4 uses the same supported source-message formats and returns the source bits,
+FT4-scrambled bits, 174-bit codeword, and 103 sync/data tones:
+
+```go
+encoded, err := ft4.EncodeStandardMessage("CQ TEST K1ABC FN42")
+if err != nil {
+	panic(err)
+}
+fmt.Println(encoded.Text, encoded.Tones)
+```
+
+Maintainers with a pinned WSJT-X `jt9` binary can validate the FT4 frames
+end-to-end with `WSJTX_JT9=/path/to/jt9 task test:oracle-ft4`.
+
 For compound-call QSO messages, the non-compound counterpart is encoded as a
 12-bit hash. Stateless round-trips therefore render that counterpart as
 `<...>` unless decoder hash history can resolve it. Bracketed hash tokens are
@@ -173,8 +195,8 @@ section, ok := ft8.ParseARRLFieldDaySection("ema")
 fmt.Println(sections, section, ok)
 ```
 
-The package stops at FT8 protocol artifacts. Audio output, transmit scheduling,
-PTT, and radio control belong in separate packages.
+The packages stop at FT8/FT4 protocol artifacts. Audio output, transmit
+scheduling, PTT, and radio control belong in separate packages.
 
 ## Message Format Coverage
 

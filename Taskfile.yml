@@ -43,6 +43,13 @@ tasks:
       # gonumfft tag here instead of CGO_ENABLED=0.
       - go test -race -tags gonumfft ./ft8 -run 'TestStatelessDecodeConcurrentNoRace|TestDecodeMessagesCheckedRejectsInvalidInput|TestDecodeStructuredCheckedRejectsInvalidInput|FuzzDecodePublicAPIsNoPanic'
 
+  test:oracle-ft4:
+    desc: Validate FT4 encoder output with a pinned WSJT-X jt9 binary.
+    requires:
+      vars: [WSJTX_JT9]
+    cmds:
+      - go test ./ft4 -run '^TestEncodeStandardMessageJT9Oracle$' -v
+
   bench:strict:
     desc: Benchmark strict decoding with the default backend.
     cmds:

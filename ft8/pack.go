@@ -6,6 +6,8 @@ package ft8
 import (
 	"fmt"
 	"strings"
+
+	"github.com/ColonelBlimp/go-ft8/internal/ftx77"
 )
 
 const ft8Base38Alphabet = " 0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ/"
@@ -463,90 +465,11 @@ func packReportToken(token string) (int, bool, bool) {
 }
 
 func encode17491(message77 [77]int8) [174]int8 {
-	var message91 [91]int8
-	copy(message91[:77], message77[:])
-	crc := crc14ForMessage(message77)
-	for i := 0; i < 14; i++ {
-		message91[77+i] = int8((crc >> uint(13-i)) & 1)
-	}
-	return encode17491NoCRC(message91)
-}
-
-func crc14ForMessage(message77 [77]int8) int {
-	target := crc14RemainderMessage77(message77)
-	return solveCRC14(target)
+	return ftx77.Encode17491(message77)
 }
 
 func crc14RemainderMessage77(message77 [77]int8) int {
-	var state uint16
-	for i := 0; i < 15; i++ {
-		state = (state << 1) | uint16(message77[i]&1)
-	}
-	for i := 0; i <= 81; i++ {
-		pos := i + 14
-		var bit int8
-		if pos < 77 {
-			bit = message77[pos]
-		}
-		state = crc14Step(state, bit)
-	}
-	return int(state >> 1)
-}
-
-var crc14EncodeRows = initCRC14EncodeRows()
-
-func initCRC14EncodeRows() [14]uint16 {
-	var rows [14]uint16
-	for col := 0; col < 14; col++ {
-		var bits [96]int8
-		bits[82+col] = 1
-		rem := crc14Remainder(bits[:])
-		for row := 0; row < 14; row++ {
-			if rem&(1<<uint(13-row)) != 0 {
-				rows[row] |= 1 << uint(13-col)
-			}
-		}
-	}
-	return rows
-}
-
-func solveCRC14(target int) int {
-	rows := crc14EncodeRows
-	var rhs [14]int
-	for row := 0; row < 14; row++ {
-		rhs[row] = (target >> uint(13-row)) & 1
-	}
-
-	for col := 0; col < 14; col++ {
-		mask := uint16(1 << uint(13-col))
-		pivot := -1
-		for row := col; row < 14; row++ {
-			if rows[row]&mask != 0 {
-				pivot = row
-				break
-			}
-		}
-		if pivot < 0 {
-			panic("crc14: singular generator submatrix")
-		}
-		if pivot != col {
-			rows[col], rows[pivot] = rows[pivot], rows[col]
-			rhs[col], rhs[pivot] = rhs[pivot], rhs[col]
-		}
-		for row := 0; row < 14; row++ {
-			if row == col || rows[row]&mask == 0 {
-				continue
-			}
-			rows[row] ^= rows[col]
-			rhs[row] ^= rhs[col]
-		}
-	}
-
-	crc := 0
-	for row := 0; row < 14; row++ {
-		crc |= rhs[row] << uint(13-row)
-	}
-	return crc
+	return ftx77.CRC14RemainderMessage77(message77)
 }
 
 func isGrid4(s string) bool {

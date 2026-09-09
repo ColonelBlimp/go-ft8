@@ -1,8 +1,8 @@
 # Licensing
 
-This repository contains a WSJT-X-derived FT8 decoder research implementation.
-It is licensed under the GNU General Public License, version 3 only
-(`GPL-3.0-only`).
+This repository contains a WSJT-X-derived FT8 decoder and FT8/FT4 encoder
+research implementation. It is licensed under the GNU General Public License,
+version 3 only (`GPL-3.0-only`).
 
 The complete GPLv3 license text is in `LICENSE`.
 
@@ -27,9 +27,9 @@ respective owners.
 
 ## Scope
 
-The GPLv3 license applies to this repository's FT8 decoder implementation,
-tests, fixtures, reports, and project documentation unless a file or vendored
-third-party directory states a different license.
+The GPLv3 license applies to this repository's FT8 decoder and FT8/FT4 encoder
+implementations, tests, fixtures, reports, and project documentation unless a
+file or vendored third-party directory states a different license.
 
 This work is not a clean-room implementation. It was developed through
 WSJT-X/jt9 parity research, source-adjacent investigation, and behavioral
@@ -41,8 +41,8 @@ There is no permissive-license grant for this repository.
 ## Derivative Notice
 
 WSJT-X and jt9 are GPL-licensed amateur-radio weak-signal communication tools.
-This repository implements FT8 decoding behavior derived from that project and
-therefore carries GPLv3 licensing forward.
+This repository implements FT8 decoding and FT8/FT4 encoding behavior derived
+from that project and therefore carries GPLv3 licensing forward.
 
 See `WSJTX_DERIVATIVE.md` for the project-level derivative-status note.
 

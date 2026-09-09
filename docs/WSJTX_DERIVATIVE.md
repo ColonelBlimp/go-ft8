@@ -1,7 +1,7 @@
 # WSJT-X Derivative Status
 
-This repository is a research FT8 decoder implementation derived from
-WSJT-X/jt9 behavior and source-adjacent investigation.
+This repository is a research FT8 decoder and FT8/FT4 encoder implementation
+derived from WSJT-X/jt9 behavior and source-adjacent investigation.
 
 Original contributions in this repository are copyright (C) 2026 Marc L. Veary (7Q5MLV).
 That assertion does not claim ownership of preexisting WSJT-X/jt9
@@ -15,6 +15,7 @@ and as a dependency for [Station Manager](https://github.com/ColonelBlimp/statio
 
 - strict-mode parity with the installed `jt9 -8` oracle for the local WAV
   fixture corpus;
+- protocol-level FT4 encoder parity with the pinned WSJT-X release oracle;
 - deeper experimental decoding modes that may recover additional plausible
   messages;
 - profiling and performance improvements for use inside a larger application.
