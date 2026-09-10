@@ -5,6 +5,7 @@ package ft4
 
 import (
 	"errors"
+	"math"
 	"testing"
 
 	"github.com/ColonelBlimp/go-ft8/ft8"
@@ -110,5 +111,14 @@ func TestFT4ProtocolConstants(t *testing.T) {
 	}
 	if DataSymbols != 87 || SyncSymbols != 16 || ToneSymbols != 103 {
 		t.Fatalf("symbol counts got data=%d sync=%d tones=%d", DataSymbols, SyncSymbols, ToneSymbols)
+	}
+	if WaveformSamples != 60480 || math.Abs(WaveformSeconds-5.04) > 1e-12 {
+		t.Fatalf("waveform geometry got samples=%d seconds=%v", WaveformSamples, WaveformSeconds)
+	}
+	if math.Abs(ToneSpacingHz-20.833333333333332) > 1e-12 || math.Abs(SignalWidthHz-83.33333333333333) > 1e-12 {
+		t.Fatalf("tone geometry got spacing=%v width=%v", ToneSpacingHz, SignalWidthHz)
+	}
+	if math.Abs(SyncStartSeconds-0.5) > 1e-12 || math.Abs(NominalStartSeconds-0.452) > 1e-12 {
+		t.Fatalf("nominal timing got waveform=%v sync=%v", NominalStartSeconds, SyncStartSeconds)
 	}
 }

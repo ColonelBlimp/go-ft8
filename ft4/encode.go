@@ -1,11 +1,13 @@
 // SPDX-FileCopyrightText: 2026 Marc L. Veary (7Q5MLV)
 // SPDX-License-Identifier: GPL-3.0-only
 
-// Package ft4 provides FT4 protocol support.
+// Package ft4 encodes and decodes FT4 messages.
 //
-// The initial package surface provides protocol-level encoding. Receive-side
-// decoding will be added separately. Audio generation, transmit scheduling,
-// PTT, and radio control remain outside the package.
+// DecodeMessages accepts one 7.5-second, 12 kHz mono signed-16-bit PCM slot.
+// EncodeStandardMessage produces protocol bits and tones; callers own audio
+// generation, transmit scheduling, PTT, and radio control. The initial decoder
+// provides unassisted BP decoding for standard contest operation. A-priori
+// decoding and successive-interference subtraction are intentionally deferred.
 package ft4
 
 import (

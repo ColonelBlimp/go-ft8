@@ -84,6 +84,29 @@ func (p Payload77) Bits() [payload77Bits]byte {
 	return out
 }
 
+// Payload77FromBits packs one byte per bit into a Payload77. Only the low bit
+// of each input element is used.
+//
+// FT4 and FT8 share the same 77-bit source-message formats, so this helper can
+// also be used by other FTx mode packages after mode-specific descrambling.
+func Payload77FromBits(bits [payload77Bits]byte) Payload77 {
+	var out Payload77
+	for i, bit := range bits {
+		if bit&1 != 0 {
+			out[i/8] |= 1 << uint(7-i%8)
+		}
+	}
+	return out
+}
+
+// ParsePayload77 renders a verified 77-bit payload without decoder hash
+// history. Standard callsigns render normally; unresolved hashed callsigns are
+// represented by the package's usual angle-bracket placeholder.
+func ParsePayload77(payload Payload77) (string, ParseStatus) {
+	parsed := parsePayload77WithHashes(payload, nil)
+	return parsed.Text, parsed.Status
+}
+
 func payload77FromBits(bits []int8) Payload77 {
 	var out Payload77
 	for i := 0; i < payload77Bits && i < len(bits); i++ {

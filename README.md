@@ -1,15 +1,13 @@
 # go-ft8
 
-`go-ft8` is a Go implementation of FT8 decoding and FT8/FT4 protocol encoding.
-It decodes one 15-second FT8 slot from 12 kHz mono-signed 16-bit PCM audio,
-encodes supported standard FT8 and FT4 messages to protocol symbols, and
-exposes both a strict FT8 decoder path and optional deeper experimental search
-modes.
+`go-ft8` is a Go implementation of FT8 and FT4 decoding and protocol encoding.
+It decodes 12 kHz mono signed-16-bit PCM slots, encodes supported standard FT8
+and FT4 messages to protocol symbols, and exposes both a strict FT8 decoder
+path and optional deeper experimental FT8 search modes.
 
 This repository is intended for FT8/FT4 protocol experimentation, parity work,
-profiling, and integration into larger Go applications that need FT8 message
-recovery or standard-message encoding. FT4 receive-side decoding is not yet
-implemented.
+profiling, and integration into larger Go applications that need FT-family
+message recovery or standard-message encoding.
 
 ## Status
 
@@ -33,7 +31,7 @@ Import the codec package:
 import "github.com/ColonelBlimp/go-ft8/ft8"
 ```
 
-The initial FT4 encoder is a sibling package:
+FT4 is provided by a sibling package:
 
 ```go
 import "github.com/ColonelBlimp/go-ft8/ft4"
@@ -168,6 +166,34 @@ if err != nil {
 }
 fmt.Println(encoded.Text, encoded.Tones)
 ```
+
+Decode one complete FT4 slot with the checked integration API:
+
+```go
+var pcm = make([]int16, ft4.SlotSamples) // 7.5 s at 12 kHz, mono PCM16.
+
+report, err := ft4.DecodeMessagesChecked(pcm, ft4.DecoderOptions{})
+if err != nil {
+	panic(err)
+}
+for _, msg := range report.Messages {
+	fmt.Printf("%3d dB %7.1f Hz %+5.2f s  %s\n",
+		msg.SNR, msg.FreqHz, msg.DTSec, msg.Text)
+}
+```
+
+`ft4.DecodedMessage` is an alias of `ft8.DecodedMessage`, so an application can
+use a single FT-family result DTO. FT4 exposes `SlotSeconds`, `SlotSamples`,
+`NominalStartSeconds`, `SyncStartSeconds`, `WaveformSeconds`, `ToneSpacingHz`,
+and `SignalWidthHz` for scheduler and waterfall integration. `DTSec` is relative
+to the nominal first Costas-symbol boundary at 0.5 seconds into the slot; the
+complete ramped waveform begins at 0.452 seconds.
+
+The baseline FT4 decoder performs unassisted belief-propagation decoding and
+supports multiple signals at distinct frequencies. AP decoding, successive
+interference cancellation, and deep/OSD search are deferred, so this first
+receiver is intentionally less sensitive in crowded or overlapping conditions
+than WSJT-X.
 
 Maintainers with a pinned WSJT-X `jt9` binary can validate the FT4 frames
 end-to-end with `WSJTX_JT9=/path/to/jt9 task test:oracle-ft4`.
@@ -374,6 +400,51 @@ These numbers are local reference measurements, not performance guarantees.
 Wall time varies with CPU, CGO toolchain, OS scheduling, fixture content, and
 decode options.
 
+### FT4 v0.9.0 slot-timing profile
+
+The FT4 receiver was profiled on 2026-09-10 on the same Ryzen 9 9900X host.
+The measured changes reuse FFT plans and transform storage across slots, reuse
+the candidate-baseline scratch space, pre-conjugate Costas references, and move
+sync range checks outside the per-sample loop. An optimized/reference score
+test covers partial blocks at both ends of the receive window.
+
+Using identical 100-iteration CPU/memory profiling commands, the clean-frame
+benchmark changed as follows:
+
+| State | Time per 7.5 s slot | Bytes per slot | Allocations per slot |
+| ----- | -------------------: | -------------: | -------------------: |
+| Before | 17.254 ms | 6,588,457 B | 170 |
+| After | 10.590 ms | 1,767 B | 8 |
+
+That is a 38.6% wall-time reduction, a 99.97% reduction in allocated bytes,
+and a 95.3% reduction in allocation count. The remaining clean-frame profile
+is led by the Costas sync search and Gonum FFT execution; neither exposes
+another low-risk deadline optimization of comparable size.
+
+Final steady-state benchmarks used 100 iterations per run and three runs:
+
+```sh
+GOCACHE=/tmp/go-build go test ./ft4 -run=^$ \
+  -bench='BenchmarkDecodeMessages(Synthesized|Noisy|Busy)Slot$' \
+  -benchmem -benchtime=100x -count=3
+```
+
+| FT4 input | Candidates | Messages | Mean | Observed range | Memory | Allocations |
+| --------- | ---------: | -------: | ---: | -------------: | -----: | ----------: |
+| Clean synthesized signal | 9 | 1 | 10.542 ms | 10.528–10.554 ms | 1,680 B | 8 |
+| One signal at −16 dB AWGN | 1 | 1 | 4.629 ms | 4.626–4.632 ms | 240 B | 6 |
+| Busy synthesized slot | 12 | 12 | 13.139 ms | 13.129–13.145 ms | 2,984 B | 46 |
+
+The 12-message case consumes 0.175% of an FT4 slot and 1.31% of Station
+Manager's provisional one-second decode budget. It is deterministic synthetic
+evidence, not a substitute for the required live busy-band p95 measurement.
+
+For comparison, a fresh strict FT8 profile over the six bundled real WAV
+fixtures measured a mean of 135.533 ms per 15-second slot, with a
+114.015–153.979 ms fixture range. The aggregate CPU profile remains dominated
+by the already-parallel PocketFFT/downsampling path, so this pass made no FT8
+algorithm changes.
+
 ## Development
 
 This repository uses [Task](https://taskfile.dev/) for common development
@@ -396,6 +467,7 @@ Run decode benchmarks with:
 task bench
 task bench:structured-deep
 task bench:payload
+task bench:ft4
 ```
 
 Run the fixture-independent smoke tests:

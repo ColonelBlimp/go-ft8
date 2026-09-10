@@ -11,8 +11,8 @@ import (
 	"sync/atomic"
 )
 
-// DecodedMessage describes one recovered FT8 message and the signal/decode
-// metrics associated with the candidate that produced it.
+// DecodedMessage describes one recovered FT-family message and the
+// signal/decode metrics associated with the candidate that produced it.
 type DecodedMessage struct {
 	// Text is the canonical message text when ParseStatus is ParseStatusParsed.
 	// It is empty for verified payloads that are unsupported, reserved, or
@@ -40,7 +40,7 @@ type DecodedMessage struct {
 	DMin           float64
 }
 
-// SignalReport returns SNR formatted as an FT8 signal report, for example
+// SignalReport returns SNR formatted as an FTx signal report, for example
 // "-13" or "+04".
 func (m DecodedMessage) SignalReport() string {
 	snr := m.SNR

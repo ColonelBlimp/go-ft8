@@ -19,7 +19,7 @@ tasks:
   test:smoke:
     desc: Run fixture-independent smoke tests.
     cmds:
-      - go test ./... -run 'TestCRC14FastMatchesSlow|TestPackEncodeRoundTripsStandardMessages|TestEncodeStandardMessage|TestDecodeMessagesWithReportEmptyInputDiagnostics|TestDecodeMessagesCheckedRejectsInvalidInput|TestDecodeStructuredCheckedRejectsInvalidInput|TestDecodeOptions'
+      - go test ./... -run 'TestCRC14FastMatchesSlow|TestPackEncodeRoundTripsStandardMessages|TestEncodeStandardMessage|TestDecode17491BPRoundTrip|TestDecodeMessagesSynthesizedFrame|TestDecodeMessagesCheckedValidation|TestDecodeMessagesWithReportEmptyInputDiagnostics|TestDecodeMessagesCheckedRejectsInvalidInput|TestDecodeStructuredCheckedRejectsInvalidInput|TestDecodeOptions'
 
   test:gonum:
     desc: Run the full test suite with the pure-Go Gonum FFT backend (CGO disabled).
@@ -29,19 +29,24 @@ tasks:
   test:smoke-gonum:
     desc: Run smoke tests with the pure-Go Gonum FFT backend (CGO disabled).
     cmds:
-      - CGO_ENABLED=0 go test ./... -run 'TestCRC14FastMatchesSlow|TestPackEncodeRoundTripsStandardMessages|TestEncodeStandardMessage|TestDecodeMessagesWithReportEmptyInputDiagnostics|TestDecodeMessagesCheckedRejectsInvalidInput|TestDecodeStructuredCheckedRejectsInvalidInput|TestDecodeOptions'
+      - CGO_ENABLED=0 go test ./... -run 'TestCRC14FastMatchesSlow|TestPackEncodeRoundTripsStandardMessages|TestEncodeStandardMessage|TestDecode17491BPRoundTrip|TestDecodeMessagesSynthesizedFrame|TestDecodeMessagesCheckedValidation|TestDecodeMessagesWithReportEmptyInputDiagnostics|TestDecodeMessagesCheckedRejectsInvalidInput|TestDecodeStructuredCheckedRejectsInvalidInput|TestDecodeOptions'
 
   test:race:
-    desc: Run race detector smoke tests for the FT8 package.
+    desc: Run race detector smoke tests for the FT8 and FT4 packages.
     cmds:
-      - go test -race ./ft8 -run 'TestStatelessDecodeConcurrentNoRace|TestDecodeMessagesCheckedRejectsInvalidInput|TestDecodeStructuredCheckedRejectsInvalidInput|FuzzDecodePublicAPIsNoPanic'
+      - go test -race ./ft8 ./ft4 -run 'TestStatelessDecodeConcurrentNoRace|TestDecodeMessagesCheckedRejectsInvalidInput|TestDecodeMessagesCheckedValidation|TestDecodeStructuredCheckedRejectsInvalidInput|FuzzDecodePublicAPIsNoPanic'
 
   test:race-gonum:
-    desc: Run FT8 race detector smoke tests with the pure-Go Gonum FFT backend.
+    desc: Run FT8/FT4 race detector smoke tests with the Gonum FFT backend.
     cmds:
       # -race itself requires CGO, so the Gonum backend is selected via the
       # gonumfft tag here instead of CGO_ENABLED=0.
-      - go test -race -tags gonumfft ./ft8 -run 'TestStatelessDecodeConcurrentNoRace|TestDecodeMessagesCheckedRejectsInvalidInput|TestDecodeStructuredCheckedRejectsInvalidInput|FuzzDecodePublicAPIsNoPanic'
+      - go test -race -tags gonumfft ./ft8 ./ft4 -run 'TestStatelessDecodeConcurrentNoRace|TestDecodeMessagesCheckedRejectsInvalidInput|TestDecodeMessagesCheckedValidation|TestDecodeStructuredCheckedRejectsInvalidInput|FuzzDecodePublicAPIsNoPanic'
+
+  bench:ft4:
+    desc: Benchmark synthesized single-signal and busy FT4 slot decodes.
+    cmds:
+      - go test ./ft4 -run=^$ -bench='BenchmarkDecodeMessages(Synthesized|Noisy|Busy)Slot$' -benchmem -benchtime=100x -count=3
 
   test:oracle-ft4:
     desc: Validate FT4 encoder output with a pinned WSJT-X jt9 binary.

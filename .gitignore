@@ -1,4 +1,7 @@
 /ft8.test
 .env
 docs/
+!docs/
+docs/*
+!docs/FT4_CONTEST_DELIVERY.md
 .claude
