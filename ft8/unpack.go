@@ -78,7 +78,7 @@ func parsePayload77WithHashes(payload Payload77, hashes *hashTable) payloadParse
 	case typeID.I3 == 0 && typeID.N3 == 0:
 		result.Text, ok = unpackFreeText(bits[:71])
 	case typeID.I3 == 0 && typeID.N3 == 1:
-		result.Text, ok = unpackDXpedition(bits, hashes)
+		result.Text, ok = unpackDXpedition(payload, hashes)
 	case typeID.I3 == 0 && (typeID.N3 == 3 || typeID.N3 == 4):
 		result.Text, ok = unpackARRLFieldDay(bits, int(typeID.N3), hashes)
 	case typeID.I3 == 0 && typeID.N3 == 5:
@@ -109,25 +109,19 @@ func parsePayload77WithHashes(payload Payload77, hashes *hashTable) payloadParse
 	return result
 }
 
-func unpackDXpedition(bits []int8, hashes *hashTable) (string, bool) {
-	n28a := readBits(bits, 0, 28)
-	n28b := readBits(bits, 28, 28)
-	n10 := readBits(bits, 56, 10)
-	n5 := readBits(bits, 66, 5)
-
-	call1, ok1 := unpack28WithHashes(n28a, hashes)
-	call2, ok2 := unpack28WithHashes(n28b, hashes)
-	if !ok1 || !ok2 || n28a <= 2 || n28b <= 2 {
+func unpackDXpedition(payload Payload77, hashes *hashTable) (string, bool) {
+	message, ok := payload.dxpedition(hashes)
+	if !ok {
 		return "", false
 	}
 	call3 := "<...>"
 	if hashes != nil {
-		if call := hashes.Lookup10(n10); call != "" {
+		if call := hashes.Lookup10(message.SenderHash10); call != "" {
 			call3 = "<" + call + ">"
 		}
 	}
-	report := formatReport(2*n5 - 30)
-	return call1 + " RR73; " + call2 + " " + call3 + " " + report, true
+	report := formatReport(message.Report)
+	return message.Call1 + " RR73; " + message.Call2 + " " + call3 + " " + report, true
 }
 
 func unpackTelemetry(bits []int8) (string, bool) {
@@ -232,7 +226,9 @@ func unpackStandard(bits []int8, i3 int, hashes *hashTable) (string, bool) {
 	call2 = normalizeCQ(call2)
 	call1 = addPortableSuffix(call1, ipa, i3)
 	call2 = addPortableSuffix(call2, ipb, i3)
-	if hashes != nil && !strings.Contains(call2, "<") {
+	// Only a spelled-out standard callsign can teach history here. Special
+	// tokens (including suffixed CQ/QRZ tokens) and hash references cannot.
+	if hashes != nil && n28b >= ft8NTokens+ft8Max22 {
 		hashes.Save(call2)
 	}
 
@@ -419,8 +415,9 @@ func (h *hashTable) Save(call string) {
 	if h.frozen {
 		return
 	}
-	call = strings.TrimSpace(strings.Trim(call, "<>"))
-	if call == "" || call == "..." || strings.Contains(call, "<") || len(call) < 3 {
+	var ok bool
+	call, ok = normalizeHistoryCallsign(call)
+	if !ok {
 		return
 	}
 	n22 := hashCall(call, 22)

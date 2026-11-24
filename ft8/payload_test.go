@@ -71,3 +71,48 @@ func TestParseStatusString(t *testing.T) {
 		}
 	}
 }
+
+func TestPayload77DXpedition(t *testing.T) {
+	payload := payload77FromGoldenBits(t, unpack77GoldenVectors[0].payload)
+	message, ok := payload.DXpedition()
+	if !ok || message.Call1 != "K1ABC" || message.Call2 != "W9XYZ" || message.Report != -12 {
+		t.Fatalf("DXpedition = %+v, %v", message, ok)
+	}
+	hash, ok := CallsignHash("KH1/KH7Z", 10)
+	if !ok || message.SenderHash10 != hash {
+		t.Fatalf("sender hash = %d, want %d", message.SenderHash10, hash)
+	}
+	for _, n5 := range []int{0, 31} {
+		bits := payload.int8Bits()
+		writeBits(bits[:], 66, 5, n5)
+		got, ok := payload77FromBits(bits[:]).DXpedition()
+		if !ok || got.Report != 2*n5-30 {
+			t.Fatalf("boundary report = %+v, %v", got, ok)
+		}
+	}
+	for _, field := range []int{0, 28} {
+		bits := payload.int8Bits()
+		writeBits(bits[:], field, 28, ft8NTokens+hashCall("DX1ABC", 22))
+		got, ok := payload77FromBits(bits[:]).DXpedition()
+		if !ok || (field == 0 && got.Call1 != "<...>") || (field == 28 && got.Call2 != "<...>") {
+			t.Fatalf("hashed call field %d = %+v, %v", field, got, ok)
+		}
+		for _, invalid := range []int{0, 1, 2, 10, 1003, ft8NTokens - 1, ft8NTokens + ft8Max22} {
+			writeBits(bits[:], field, 28, invalid)
+			if got, ok := payload77FromBits(bits[:]).DXpedition(); ok || got != (DXpeditionMessage{}) {
+				t.Fatalf("accepted invalid call %d in field %d: %+v, %v", invalid, field, got, ok)
+			}
+		}
+	}
+	// Keep legacy text parsing permissive while the new accessor rejects tokens.
+	bits := payload.int8Bits()
+	writeBits(bits[:], 0, 28, 10)
+	if text, status := ParsePayload77(payload77FromBits(bits[:])); status != ParseStatusParsed || text != "CQ_007 RR73; W9XYZ <...> -12" {
+		t.Fatalf("legacy token rendering = %q, %s", text, status)
+	}
+	for _, vector := range unpack77GoldenVectors[1:] {
+		if got, ok := payload77FromGoldenBits(t, vector.payload).DXpedition(); ok || got != (DXpeditionMessage{}) {
+			t.Fatalf("accepted %s as DXpedition: %+v, %v", vector.name, got, ok)
+		}
+	}
+}

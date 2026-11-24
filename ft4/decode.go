@@ -95,10 +95,10 @@ func DecodeMessages(iwave []int16) []DecodedMessage {
 
 // DecodeMessagesWithOptions decodes one FT4 slot with explicit search options.
 func DecodeMessagesWithOptions(iwave []int16, options DecoderOptions) []DecodedMessage {
-	return decodeMessages(iwave, normalizeDecoderOptions(options), nil)
+	return decodeMessages(iwave, normalizeDecoderOptions(options), nil, nil)
 }
 
-func decodeMessages(iwave []int16, options decodeOptions, diagnostics *DecodeDiagnostics) []DecodedMessage {
+func decodeMessages(iwave []int16, options decodeOptions, diagnostics *DecodeDiagnostics, history *ft8.CallsignHistory) []DecodedMessage {
 	workspace := acquireDecodeWorkspace()
 	defer releaseDecodeWorkspace(workspace)
 	dd := workspace.samples
@@ -188,6 +188,13 @@ func decodeMessages(iwave []int16, options decodeOptions, diagnostics *DecodeDia
 			payloadBits[i] = byte(decoded.Codeword[i]^scramblingVector[i]) & 1
 		}
 		payload := ft8.Payload77FromBits(payloadBits)
+		var text string
+		var status ParseStatus
+		if history != nil {
+			text, status = history.ParsePayload77(payload)
+		}
+		// As in FT8, even a duplicate's successful parse refreshes hash
+		// recency in candidate order before duplicate output is suppressed.
 		if seen[payload] {
 			if diagnostics != nil {
 				diagnostics.DuplicateMessages++
@@ -195,7 +202,9 @@ func decodeMessages(iwave []int16, options decodeOptions, diagnostics *DecodeDia
 			continue
 		}
 		seen[payload] = true
-		text, status := ft8.ParsePayload77(payload)
+		if history == nil {
+			text, status = ft8.ParsePayload77(payload)
+		}
 		out = append(out, DecodedMessage{
 			Text:        text,
 			Payload:     payload,
@@ -285,9 +294,13 @@ type DecodeDiagnostics struct {
 // DecodeMessagesWithReport decodes one FT4 slot and returns aggregate
 // diagnostics for integration logging.
 func DecodeMessagesWithReport(iwave []int16, options DecoderOptions) DecodeReport {
+	return decodeMessagesWithReport(iwave, options, nil)
+}
+
+func decodeMessagesWithReport(iwave []int16, options DecoderOptions, history *ft8.CallsignHistory) DecodeReport {
 	start := time.Now()
 	diagnostics := newDecodeDiagnostics(iwave)
-	messages := decodeMessages(iwave, normalizeDecoderOptions(options), &diagnostics)
+	messages := decodeMessages(iwave, normalizeDecoderOptions(options), &diagnostics, history)
 	diagnostics.Duration = time.Since(start)
 	return DecodeReport{Messages: messages, Diagnostics: diagnostics}
 }
@@ -341,15 +354,19 @@ func (e *DecoderOptionError) Unwrap() error { return ErrInvalidDecoderOptions }
 
 // DecodeMessagesChecked requires exactly one full slot and validates options.
 func DecodeMessagesChecked(iwave []int16, options DecoderOptions) (DecodeReport, error) {
-	if len(iwave) != SlotSamples {
-		return DecodeReport{Diagnostics: newDecodeDiagnostics(iwave)}, &DecodeInputError{
-			GotSamples: len(iwave), WantSamples: SlotSamples,
-		}
-	}
-	if err := validateDecoderOptions(options); err != nil {
+	if err := validateDecodeRequest(iwave, options); err != nil {
 		return DecodeReport{Diagnostics: newDecodeDiagnostics(iwave)}, err
 	}
 	return DecodeMessagesWithReport(iwave, options), nil
+}
+
+func validateDecodeRequest(iwave []int16, options DecoderOptions) error {
+	if len(iwave) != SlotSamples {
+		return &DecodeInputError{
+			GotSamples: len(iwave), WantSamples: SlotSamples,
+		}
+	}
+	return validateDecoderOptions(options)
 }
 
 func validateDecoderOptions(options DecoderOptions) error {
@@ -383,11 +400,14 @@ func invalidDecoderOption(field, format string, args ...any) error {
 	return &DecoderOptionError{Field: field, Reason: fmt.Sprintf(format, args...)}
 }
 
-// Decoder retains a stream-oriented API compatible with ft8.Decoder. The
-// initial FT4 decoder is stateless; the instance boundary lets callers adopt
-// future hash/AP state without another integration change.
+// Decoder retains callsign hash history across FT4 slots for one receiver
+// stream, using FT8's learning and collision rules. A new decoder starts empty;
+// silent slots preserve history. Instances are not safe for concurrent use.
+// Unlike the stateless v0.9.0 implementation, an instance must not be shared
+// between receiver streams. Use package-level functions for stateless decoding.
 type Decoder struct {
 	options DecoderOptions
+	history ft8.CallsignHistory
 }
 
 // NewDecoder returns a decoder using default FT4 options.
@@ -398,17 +418,30 @@ func NewDecoderWithOptions(options DecoderOptions) *Decoder {
 	return &Decoder{options: options}
 }
 
-// DecodeMessages decodes one slot with the decoder's configured options.
+// RememberCallsigns seeds hash rendering history using the normalization,
+// validation, capacity, and collision rules of ft8.CallsignHistory.RememberCallsigns.
+// It affects rendering only and does not provide signal-decoding AP hints.
+func (d *Decoder) RememberCallsigns(calls ...string) {
+	d.history.RememberCallsigns(calls...)
+}
+
+// DecodeMessages decodes one slot with the configured options and retained
+// hash history. Calls learned in candidate order are available to later
+// candidates in the slot; previously rendered messages are not re-rendered.
 func (d *Decoder) DecodeMessages(iwave []int16) []DecodedMessage {
-	return DecodeMessagesWithOptions(iwave, d.options)
+	return decodeMessages(iwave, normalizeDecoderOptions(d.options), nil, &d.history)
 }
 
 // DecodeMessagesWithReport decodes one slot and returns diagnostics.
 func (d *Decoder) DecodeMessagesWithReport(iwave []int16) DecodeReport {
-	return DecodeMessagesWithReport(iwave, d.options)
+	return decodeMessagesWithReport(iwave, d.options, &d.history)
 }
 
-// DecodeMessagesChecked validates and decodes one slot.
+// DecodeMessagesChecked validates and decodes one slot with retained history.
+// Invalid input or options leave history unchanged.
 func (d *Decoder) DecodeMessagesChecked(iwave []int16) (DecodeReport, error) {
-	return DecodeMessagesChecked(iwave, d.options)
+	if err := validateDecodeRequest(iwave, d.options); err != nil {
+		return DecodeReport{Diagnostics: newDecodeDiagnostics(iwave)}, err
+	}
+	return d.DecodeMessagesWithReport(iwave), nil
 }

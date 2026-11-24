@@ -198,6 +198,82 @@ than WSJT-X.
 Maintainers with a pinned WSJT-X `jt9` binary can validate the FT4 frames
 end-to-end with `WSJTX_JT9=/path/to/jt9 task test:oracle-ft4`.
 
+## Callsign Hash History
+
+Use one `ft8.Decoder` or `ft4.Decoder` per receiver stream to keep callsign hash
+history across slots. Each instance starts empty, is independent, and is not
+safe for concurrent use. Silent slots preserve callsign history. Checked APIs
+reject invalid input or options before changing history.
+
+**Migration from v0.9.0:** `ft4.Decoder` previously held only options and could
+be shared. It now writes callsign history. Give each receiver stream its own
+instance, call its methods sequentially, and create a fresh instance on a band
+change if history should start empty. Serializing one instance does not isolate
+different streams' histories. Package-level FT4 functions remain stateless and
+safe for concurrent calls. See the [release notes](CHANGELOG.md).
+
+Both modes use FT8's learning fields: successfully parsed standard
+messages save the full second callsign (including `/P` or `/R`); type 4 messages
+save the spelled-out callsign. Special and reserved call-field tokens and
+invalid spelled-out calls are excluded from history in both modes, fixing
+pre-existing FT8 learning of tokens such as `QRZ`. Other full-call fields are
+not learned. History holds up to 1000 entries keyed by 22-bit hash, with saves refreshing recency and
+the most recently saved matching call winning collisions at all hash widths.
+During a slot, learning follows candidate processing order, before FT4's final
+frequency sort. Later candidates can use newly learned calls; earlier output
+is not re-rendered. FT8 preserves this order when using parallel workers.
+
+Package-level FT8 decoding uses temporary history within each invocation.
+Package-level FT4 decoding and `ft8.ParsePayload77` have no hash history.
+Unresolved 10-, 12-, and 22-bit hashes render as `<...>`; resolved hashes render
+as `<CALL>`.
+
+Seed either decoder when the application already knows a callsign:
+
+```go
+decoder := ft4.NewDecoder() // ft8.NewDecoder() has the same seeding method.
+decoder.RememberCallsigns("W1AAA", "DX1ABC")
+messages := decoder.DecodeMessages(pcm)
+```
+
+Seeds are trimmed and uppercased, and may have one surrounding pair of angle
+brackets. Invalid or reserved tokens, non-ASCII input, embedded whitespace, and
+calls outside 3-11 base-38 characters are ignored. This validates protocol
+tokens, not callsign issuance. Automatic saves use the same validation, and
+standard-message learning also excludes special and reserved call-field tokens
+by their encoded values. Seeds use the existing history cap and recency rules.
+`RememberCallsigns` changes hash rendering only. FT8's `SetAPCallHints` helps
+decode signals and does not seed
+hash rendering history; use both methods when both behaviors are wanted.
+
+For a verified payload outside a signal decoder, a zero-value
+`ft8.CallsignHistory` offers `RememberCallsigns` and `ParsePayload77` with the
+same learning rules. Keep that history per stream as well.
+
+Applications can also inspect a type 0.1 sender hash without any history:
+
+```go
+if dx, ok := msg.Payload.DXpedition(); ok {
+	if hash, valid := ft8.CallsignHash("DX1ABC", 10); valid && hash == dx.SenderHash10 {
+		fmt.Printf("Sender hash matches DX1ABC; report %+d dB\n", dx.Report)
+	}
+}
+```
+
+`DXpedition()` returns the two recipient calls with stateless rendering, the
+sender's raw 10-bit hash, and the numeric report. It returns `false` for other
+families, invalid fields, or special/reserved recipient tokens even when the
+legacy text parser can render those tokens. `ft8.CallsignHash` accepts widths
+10, 12, and 22,
+uses the same normalization and validation as seeding, and returns `(0, false)`
+for an invalid call or width. Hashes can collide: a match identifies a candidate
+sender and does not establish identity uniquely. The decoder uses the newest
+matching entry even if several calls match; an unheard sender's hash may also
+match a retained call. This remains the FT8 collision policy.
+
+The corrected implementation brief is in
+[docs/CALLSIGN_HASH_HISTORY.md](docs/CALLSIGN_HASH_HISTORY.md).
+
 For compound-call QSO messages, the non-compound counterpart is encoded as a
 12-bit hash. Stateless round-trips therefore render that counterpart as
 `<...>` unless decoder hash history can resolve it. Bracketed hash tokens are

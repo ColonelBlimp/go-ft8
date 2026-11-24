@@ -6,6 +6,21 @@
 // Production callers should normally create one Decoder per receiver stream and
 // call (*Decoder).DecodeMessages once per 15-second FT8 slot. Decoder instances
 // retain hash/history state and are not safe for concurrent use.
+// Both ft8.Decoder and ft4.Decoder retain independent callsign hash history.
+// Only full second calls in standard messages and spelled-out type 4 calls
+// are learned, and only after successful parsing. RememberCallsigns can seed
+// known calls for rendering without changing signal-decoding AP hints.
+// Automatic learning excludes special/reserved call-field tokens and invalid
+// spelled-out calls using the same ASCII token validation as seeding.
+// Hash collisions resolve to the most recently saved matching call.
+// Package-level FT8 decoding retains history within one invocation only;
+// ParsePayload77 and package-level FT4 decoding have no hash history.
+// Calls learned in candidate order can resolve later candidates in that slot;
+// earlier output is not re-rendered. Silent slots do not clear callsign history.
+// CallsignHistory provides the same rendering rules for verified payloads.
+// CallsignHash and Payload77.DXpedition let callers compare a type 0.1 sender
+// hash against a known call; such a match is not a unique identity guarantee.
+//
 // DecodeMessagesWithReport and (*Decoder).DecodeMessagesWithReport return the
 // same messages plus aggregate diagnostics for production observability,
 // including AP profile/source attempt, success, and post-LDPC rejection

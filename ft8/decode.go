@@ -522,12 +522,16 @@ func decodeLLRPass(llr *[174]float64, apmask *[174]int8, apProfileName string, a
 // successfully parsed messages update a live table; frozen worker snapshots
 // remain read-only and are committed later in candidate order.
 func parseCandidatePayload(cw [174]int8, hashes *hashTable) payloadParseResult {
+	return parsePayload77AndRemember(payload77FromBits(cw[:77]), hashes)
+}
+
+func parsePayload77AndRemember(payload Payload77, hashes *hashTable) payloadParseResult {
 	workingHashes := hashes
 	var pendingSaves []string
 	if hashes != nil {
 		workingHashes = hashes.transactionalSnapshot(&pendingSaves)
 	}
-	parsed := parsePayload77WithHashes(payload77FromBits(cw[:77]), workingHashes)
+	parsed := parsePayload77WithHashes(payload, workingHashes)
 	if parsed.Status == ParseStatusParsed && hashes != nil && !hashes.frozen {
 		for _, call := range pendingSaves {
 			hashes.Save(call)

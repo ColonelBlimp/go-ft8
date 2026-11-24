@@ -4,6 +4,17 @@
 // Package ft4 encodes and decodes FT4 messages.
 //
 // DecodeMessages accepts one 7.5-second, 12 kHz mono signed-16-bit PCM slot.
+// Use one Decoder per receiver stream to retain callsign hash history across
+// slots. It learns and resolves 10-, 12-, and 22-bit hashes with FT8's rules:
+// only successfully parsed standard second calls and spelled-out type 4 calls
+// are saved, in candidate order. Later candidates can use newly learned calls;
+// earlier output is not re-rendered. Silent slots preserve history, and each
+// instance starts empty and is not safe for concurrent use. RememberCallsigns
+// seeds known calls for hash rendering without assisting signal decoding.
+// Package-level decode functions remain history-free. ft8.CallsignHash and
+// Payload77.DXpedition expose raw sender-hash matching for type 0.1 messages;
+// matching hashes can collide and do not uniquely establish identity.
+//
 // EncodeStandardMessage produces protocol bits and tones; callers own audio
 // generation, transmit scheduling, PTT, and radio control. The initial decoder
 // provides unassisted BP decoding for standard contest operation. A-priori

@@ -107,6 +107,43 @@ func ParsePayload77(payload Payload77) (string, ParseStatus) {
 	return parsed.Text, parsed.Status
 }
 
+// DXpeditionMessage describes a type 0.1 combined RR73 and report message.
+// Call1 and Call2 use stateless rendering, so a hash in either field is <...>.
+type DXpeditionMessage struct {
+	Call1, Call2 string
+	SenderHash10 int
+	Report       int // Signal report in dB, from -30 through +32 in steps of 2.
+}
+
+// DXpedition extracts a valid type 0.1 message without consulting or updating
+// history. Other message families or invalid fields return a zero value and
+// false. SenderHash10 retains the sender's hash even when its call is unknown.
+// Recipient fields must encode callsigns or hashes; special and reserved
+// 28-bit tokens are rejected even if the legacy text parser can render them.
+func (p Payload77) DXpedition() (DXpeditionMessage, bool) {
+	if p.readBits(0, 28) < ft8NTokens || p.readBits(28, 28) < ft8NTokens {
+		return DXpeditionMessage{}, false
+	}
+	return p.dxpedition(nil)
+}
+
+func (p Payload77) dxpedition(hashes *hashTable) (DXpeditionMessage, bool) {
+	if p.MessageType() != (MessageType{I3: 0, N3: 1}) {
+		return DXpeditionMessage{}, false
+	}
+	n28a, n28b := p.readBits(0, 28), p.readBits(28, 28)
+	call1, ok1 := unpack28WithHashes(n28a, hashes)
+	call2, ok2 := unpack28WithHashes(n28b, hashes)
+	if !ok1 || !ok2 || n28a <= 2 || n28b <= 2 {
+		return DXpeditionMessage{}, false
+	}
+	return DXpeditionMessage{
+		Call1: call1, Call2: call2,
+		SenderHash10: p.readBits(56, 10),
+		Report:       2*p.readBits(66, 5) - 30,
+	}, true
+}
+
 func payload77FromBits(bits []int8) Payload77 {
 	var out Payload77
 	for i := 0; i < payload77Bits && i < len(bits); i++ {

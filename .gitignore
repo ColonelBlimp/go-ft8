@@ -4,4 +4,5 @@ docs/
 !docs/
 docs/*
 !docs/FT4_CONTEST_DELIVERY.md
+!docs/CALLSIGN_HASH_HISTORY.md
 .claude

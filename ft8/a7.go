@@ -49,10 +49,19 @@ func NewDecoderWithOptions(options DecoderOptions) *Decoder {
 //
 // The decoder copies the supplied slice, normalizes/deduplicates calls, caps
 // usable hints at 200, and preserves caller order as policy ranking.
+// AP hints help decode signals; use RememberCallsigns separately to seed hash
+// rendering history. Setting AP hints does not seed that history.
 func (d *Decoder) SetAPCallHints(hints []APCallHint) {
 	d.rawOptions.APCallHints = copyAPCallHints(hints)
 	d.options.apCallHints = normalizeAPCallHints(hints)
 	d.mode = decoderModeFromOptions(d.rawOptions)
+}
+
+// RememberCallsigns seeds hash rendering history using the normalization,
+// validation, capacity, and collision rules of CallsignHistory.RememberCallsigns.
+// It does not change signal decoding or the AP hints set by SetAPCallHints.
+func (d *Decoder) RememberCallsigns(calls ...string) {
+	rememberCallsigns(&d.hashes, calls)
 }
 
 func decoderModeFromOptions(options DecoderOptions) DecodeMode {

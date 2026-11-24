@@ -34,3 +34,26 @@ func TestStatelessDecodeConcurrentNoRace(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestDecoderHistoryConcurrentStreamsNoRace(t *testing.T) {
+	samples := historyWave(historyPayloads(t)["10"], 1500)
+	var wg sync.WaitGroup
+	for _, seed := range []string{"DX1ABC", "W9XYZ"} {
+		wg.Go(func() {
+			decoder := NewDecoder()
+			decoder.RememberCallsigns(seed)
+			want := "W1AAA RR73; N3CCC <...> -10"
+			if seed == "DX1ABC" {
+				want = "W1AAA RR73; N3CCC <DX1ABC> -10"
+			}
+			for range 2 {
+				messages := decoder.DecodeMessages(samples)
+				if len(messages) != 1 || messages[0].Text != want {
+					t.Errorf("stream seeded with %q decoded %+v, want %q", seed, messages, want)
+					return
+				}
+			}
+		})
+	}
+	wg.Wait()
+}
